@@ -143,32 +143,29 @@ def process_video_overlay(source_path: str, mask_path: str, output_path: str, op
     # 출력 폴더 생성
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    # FFmpeg 인코더 (하드웨어 가속 시도)
+    # FFmpeg 인코더 설정 (환경에 따른 하드웨어 가속 및 속도 최적화)
+    # 기본은 libx264 (CPU) + ultrafast
+    encoder_cmd = ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18']
+    
+    # 하드웨어 가속 확인
+    try:
+        check_proc = subprocess.run(['ffmpeg', '-encoders'], capture_output=True, text=True)
+        if 'h264_videotoolbox' in check_proc.stdout:
+            encoder_cmd = ['-c:v', 'h264_videotoolbox', '-b:v', '8M']
+        elif 'h264_nvenc' in check_proc.stdout:
+            encoder_cmd = ['-c:v', 'h264_nvenc', '-preset', 'p1', '-qp', '18']
+    except:
+        pass
+
     ffmpeg_cmd = [
         'ffmpeg', '-y',
         '-f', 'rawvideo', '-vcodec', 'rawvideo',
         '-s', f'{width}x{height}', '-pix_fmt', 'bgr24',
         '-r', str(TARGET_FPS), '-i', '-',
-        '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+        *encoder_cmd,
         '-pix_fmt', 'yuv420p', '-v', 'error',
         output_path
     ]
-
-    # macOS 하드웨어 가속 확인
-    try:
-        result = subprocess.run(['ffmpeg', '-encoders'], capture_output=True, text=True)
-        if 'h264_videotoolbox' in result.stdout:
-            ffmpeg_cmd = [
-                'ffmpeg', '-y',
-                '-f', 'rawvideo', '-vcodec', 'rawvideo',
-                '-s', f'{width}x{height}', '-pix_fmt', 'bgr24',
-                '-r', str(TARGET_FPS), '-i', '-',
-                '-c:v', 'h264_videotoolbox', '-b:v', '8M',
-                '-pix_fmt', 'yuv420p', '-v', 'error',
-                output_path
-            ]
-    except:
-        pass
 
     ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

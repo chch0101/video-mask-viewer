@@ -158,13 +158,26 @@ def process_video(source_path: str, mask_path: str, output_path: str,
     print(f"  - 해상도: {width}x{height}, 서빙 FPS: {target_fps:.2f}")
     print(f"  - 프레임 매칭: Source({original_total_frames}) <-> Mask({original_mask_frames})")
 
-    # ffmpeg 인코더 (하드웨어 가속)
+    # FFmpeg 인코더 설정 (환경에 따른 하드웨어 가속 및 속도 최적화)
+    # 기본은 libx264 (CPU) + ultrafast
+    encoder_cmd = ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18']
+    
+    # macOS 하드웨어 가속 확인
+    try:
+        check_proc = subprocess.run(['ffmpeg', '-encoders'], capture_output=True, text=True)
+        if 'h264_videotoolbox' in check_proc.stdout:
+            encoder_cmd = ['-c:v', 'h264_videotoolbox', '-b:v', '8M']
+        elif 'h264_nvenc' in check_proc.stdout:
+            encoder_cmd = ['-c:v', 'h264_nvenc', '-preset', 'p1', '-qp', '18']
+    except:
+        pass
+
     ffmpeg_cmd = [
         'ffmpeg', '-y',
         '-f', 'rawvideo', '-vcodec', 'rawvideo',
         '-s', f'{width}x{height}', '-pix_fmt', 'bgr24',
         '-r', str(target_fps), '-i', '-',
-        '-c:v', 'h264_videotoolbox', '-b:v', '8M',
+        *encoder_cmd,
         '-pix_fmt', 'yuv420p', '-v', 'error',
         output_path
     ]

@@ -266,14 +266,53 @@ function AppContent() {
       setVideoPreparing(true)
 
       try {
-        // 비디오 변환이 필요하면 미리 수행
-        const res = await fetch(`/api/prepare-video/${videoName}`, { method: 'POST' })
+        // 비디오 변환 백그라운드 작업 시작
+        const res = await fetch('/api/prepare-video/' + videoName, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mask_source: selectedMaskSource
+          })
+        })
         const data = await res.json()
-        if (data.converted?.length > 0) {
-          console.log(`Video prepared: ${data.message}`)
+
+        if (data.status === 'processing') {
+          console.log('Video conversion started in background, polling for status...')
+
+          // 완료될 때까지 폴링 (매 1.5초마다 진행 상태 확인)
+          let isCompleted = false
+          let retries = 0
+          const maxRetries = 120 // 최대 3분 대기 (120 * 1.5초)
+
+          while (!isCompleted && retries < maxRetries) {
+            await new Promise(r => setTimeout(r, 1500))
+
+            const statusUrl = selectedMaskSource
+              ? `/api/conversion-status/${videoName}?mask_source=${selectedMaskSource}`
+              : `/api/conversion-status/${videoName}`
+
+            const statusRes = await fetch(statusUrl)
+            const statusData = await statusRes.json()
+
+            if (statusData.status === 'completed') {
+              console.log('Video prepared:', statusData.converted)
+              isCompleted = true
+            } else if (statusData.status === 'failed' || statusData.status === 'unknown') {
+              console.error('Video background prepare failed:', statusData.error)
+              isCompleted = true
+            }
+
+            retries++
+          }
+
+          if (retries >= maxRetries) {
+            console.error('Video prepare polling timed out after 3 minutes')
+          }
+        } else if (data.status === 'completed') {
+          console.log('Video already prepared / no conversion needed')
         }
       } catch (err) {
-        console.error('Video prepare failed:', err)
+        console.error('Video prepare request failed:', err)
       }
 
       setVideoPreparing(false)
@@ -332,13 +371,46 @@ function AppContent() {
           })
         })
         const genData = await genRes.json()
-        setMosaicGenerating(false)
 
-        if (genData.success) {
+        if (genData.status === 'processing') {
+          console.log('Mosaic generation started in background, polling for status...')
+
+          let isCompleted = false
+          let retries = 0
+          const maxRetries = 200 // 최대 5분 대기 (200 * 1.5초)
+          const baseStatusUrl = selectedMaskSource
+            ? `/api/conversion-status/${currentVideo.name}?mask_source=${selectedMaskSource}`
+            : `/api/conversion-status/${currentVideo.name}`
+          const statusUrl = baseStatusUrl.replace('/conversion-status/', '/conversion-status/mosaic_')
+
+          while (!isCompleted && retries < maxRetries) {
+            await new Promise(r => setTimeout(r, 1500))
+
+            const statusRes = await fetch(statusUrl)
+            const statusData = await statusRes.json()
+
+            if (statusData.status === 'completed') {
+              console.log('Mosaic generated successfully')
+              setViewingMosaic(true)
+              isCompleted = true
+            } else if (statusData.status === 'failed' || statusData.status === 'unknown') {
+              console.error('Mosaic background generation failed:', statusData.error)
+              alert('모자이크 생성 실패: ' + (statusData.error || 'Unknown error'))
+              isCompleted = true
+            }
+            retries++
+          }
+
+          if (retries >= maxRetries) {
+            console.error('Mosaic prepare polling timed out')
+            alert('모자이크 처리 시간 초과')
+          }
+        } else if (genData.success && genData.status !== 'processing') {
           setViewingMosaic(true)
         } else {
-          alert('모자이크 생성 실패: ' + (genData.error || 'Unknown error'))
+          alert('모자이크 생성 시작 실패: ' + (genData.error || 'Unknown error'))
         }
+        setMosaicGenerating(false)
       }
     } catch (err) {
       setMosaicGenerating(false)
@@ -381,13 +453,46 @@ function AppContent() {
           })
         })
         const genData = await genRes.json()
-        setOverlayGenerating(false)
 
-        if (genData.success) {
+        if (genData.status === 'processing') {
+          console.log('Overlay generation started in background, polling for status...')
+
+          let isCompleted = false
+          let retries = 0
+          const maxRetries = 400 // 최대 10분 대기 (400 * 1.5초)
+          const baseStatusUrl = selectedMaskSource
+            ? `/api/conversion-status/${currentVideo.name}?mask_source=${selectedMaskSource}`
+            : `/api/conversion-status/${currentVideo.name}`
+          const statusUrl = baseStatusUrl.replace('/conversion-status/', '/conversion-status/overlay_')
+
+          while (!isCompleted && retries < maxRetries) {
+            await new Promise(r => setTimeout(r, 1500))
+
+            const statusRes = await fetch(statusUrl)
+            const statusData = await statusRes.json()
+
+            if (statusData.status === 'completed') {
+              console.log('Overlay generated successfully')
+              setViewingOverlay(true)
+              isCompleted = true
+            } else if (statusData.status === 'failed' || statusData.status === 'unknown') {
+              console.error('Overlay background generation failed:', statusData.error)
+              alert('오버레이 생성 실패: ' + (statusData.error || 'Unknown error'))
+              isCompleted = true
+            }
+            retries++
+          }
+
+          if (retries >= maxRetries) {
+            console.error('Overlay prepare polling timed out')
+            alert('오버레이 처리 시간 초과')
+          }
+        } else if (genData.success && genData.status !== 'processing') {
           setViewingOverlay(true)
         } else {
-          alert('오버레이 생성 실패: ' + (genData.error || 'Unknown error'))
+          alert('오버레이 생성 시작 실패: ' + (genData.error || 'Unknown error'))
         }
+        setOverlayGenerating(false)
       }
     } catch (err) {
       setOverlayGenerating(false)

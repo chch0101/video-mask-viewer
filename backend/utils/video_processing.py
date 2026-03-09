@@ -41,7 +41,7 @@ def convert_to_h264(input_path, output_path):
     try:
         subprocess.run(
             ['ffmpeg', '-y', '-i', input_path,
-             '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+             '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
              '-c:a', 'copy', output_path],
             capture_output=True, check=True
         )
@@ -80,7 +80,7 @@ def sync_mask_to_source(source_path, mask_path, output_path, target_fps=30.0):
         '-f', 'rawvideo', '-vcodec', 'rawvideo',
         '-s', f'{width}x{height}', '-pix_fmt', 'bgr24',
         '-r', str(target_fps), '-i', '-',
-        '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
         '-pix_fmt', 'yuv420p', '-v', 'error',
         output_path
     ]

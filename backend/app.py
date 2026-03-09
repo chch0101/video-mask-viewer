@@ -10,10 +10,13 @@ import webbrowser
 import threading
 import time
 from datetime import datetime
-from threading import Semaphore
+from threading import Semaphore, Thread
 
 # 최대 동시 FFmpeg 변환 작업 수 제한 (OOM 방지: 가장 타이트하게 1개로 제한)
 FFMPEG_SEMAPHORE = Semaphore(1)
+
+# 변환 상태 추적 (메모리 딕셔너리)
+CONVERSION_STATUS = {}
 
 from dotenv import load_dotenv
 from utils.system_helpers import show_dialog, show_progress_notification, ensure_ffmpeg
@@ -374,74 +377,108 @@ def get_videos():
 
 @app.route('/api/prepare-video/<name>', methods=['POST'])
 def prepare_video(name):
-    """비디오 로드 전 필요한 변환을 미리 수행"""
+    """비디오 시청 전 필요한 변환을 백그라운드로 시작 (Source & Mask) 및 상태 반환. 
+    시간 초과(499) 방지를 위한 비동기 방식으로 수정됨."""
+    data = request.json
+    mask_source = data.get('mask_source', '')
+    
+    # 1. 상태 즉시 확인 및 폴더 경로 결정
+    task = get_task_name(name)
     source_path = os.path.join(VIDEO_DIR, 'source', f'{name}.mp4')
-    mask_path = os.path.join(VIDEO_DIR, 'mask', f'{name}.mp4')
+    if mask_source:
+        mask_path = os.path.join(VIDEO_DIR, 'masks', mask_source, f'{name}.mp4')
+    else:
+        mask_path = os.path.join(VIDEO_DIR, 'mask', f'{name}.mp4')
+
+    status_key = f"{mask_source}_{name}"
 
     if not os.path.exists(source_path):
         if USE_S3 and s3_file_exists(f"{S3_PREFIX}/source/{name}.mp4"):
             return jsonify({'success': True, 'converted': [], 'message': 'S3 video exists'})
         return jsonify({'error': 'Video not found'}), 404
 
-    converted = []
+    # 2. 이미 백그라운드에서 진행 중인지 확인
+    if status_key in CONVERSION_STATUS and CONVERSION_STATUS[status_key]['status'] == 'processing':
+        return jsonify({'success': True, 'status': 'processing', 'message': 'Conversion already in progress'})
 
-    # Source 변환 확인
+    # 3. 변환 필요 여부 신속 체크
+    needs_source_conv = False
+    needs_mask_conv = False
+    
     source_fps = get_video_fps(source_path)
     if abs(source_fps - TARGET_FPS) > 0.5:
         cached_source = os.path.join(CACHE_DIR, f"{name}_src30.mp4")
         if not os.path.exists(cached_source):
-            print(f"[준비] Source {name}: {source_fps}fps → {TARGET_FPS}fps 변환 중...")
-            try:
+            needs_source_conv = True
+
+    if os.path.exists(mask_path):
+        codec = get_video_codec(mask_path)
+        mask_fps = get_video_fps(mask_path)
+        if codec != 'h264' or abs(mask_fps - TARGET_FPS) > 0.5:
+            cached_mask = os.path.join(CACHE_DIR, f"{name}_mask30.mp4")
+            if not os.path.exists(cached_mask):
+                needs_mask_conv = True
+
+    # 아무것도 변환할 게 없으면 바로 완료
+    if not needs_source_conv and not needs_mask_conv:
+        return jsonify({'success': True, 'status': 'completed', 'converted': []})
+
+    # 4. 백그라운드 스레드 시작 및 즉시 응답 반환
+    CONVERSION_STATUS[status_key] = {'status': 'processing', 'error': None}
+
+    def convert_worker():
+        converted = []
+        try:
+            if needs_source_conv:
+                cached_source = os.path.join(CACHE_DIR, f"{name}_src30.mp4")
+                print(f"[백그라운드] Source {name} 변환 큐 진입...")
                 with FFMPEG_SEMAPHORE:
                     subprocess.run(
                         ['ffmpeg', '-y', '-i', source_path,
-                         '-threads', '1',
+                         '-threads', '2',
                          '-r', str(TARGET_FPS),
-                         '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+                         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
                          '-c:a', 'copy', cached_source],
                         capture_output=True, check=True
                     )
                 converted.append('source')
-                print(f"[준비] Source {name} 변환 완료")
-            except Exception as e:
-                print(f"[준비] Source 변환 실패: {e}")
-                return jsonify({'error': f'Source conversion failed: {e}'}), 500
+            
+            if needs_mask_conv:
+                cached_mask = os.path.join(CACHE_DIR, f"{name}_mask30.mp4")
+                print(f"[백그라운드] Mask {name} 변환 큐 진입...")
+                with FFMPEG_SEMAPHORE:
+                    subprocess.run(
+                        ['ffmpeg', '-y', '-i', mask_path,
+                         '-threads', '2',
+                         '-r', str(TARGET_FPS),
+                         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
+                         '-c:a', 'copy', cached_mask],
+                        capture_output=True, check=True
+                    )
+                converted.append('mask')
+            
+            CONVERSION_STATUS[status_key] = {'status': 'completed', 'error': None, 'converted': converted}
+            print(f"[백그라운드] {name} 작업 완료!")
+        except Exception as e:
+            print(f"[백그라운드] 변환 실패: {e}")
+            CONVERSION_STATUS[status_key] = {'status': 'failed', 'error': str(e)}
 
-    # Mask 변환 확인
-    if os.path.exists(mask_path):
-        codec = get_video_codec(mask_path)
-        mask_fps = get_video_fps(mask_path)
-        needs_codec = codec != 'h264'
-        needs_fps = abs(mask_fps - TARGET_FPS) > 0.5
+    # 백그라운드로 분리
+    Thread(target=convert_worker, daemon=True).start()
 
-        if needs_codec or needs_fps:
-            cached_mask = os.path.join(CACHE_DIR, f"{name}_mask30.mp4")
-            if not os.path.exists(cached_mask):
-                reasons = []
-                if needs_codec: reasons.append(f'코덱({codec}→h264)')
-                if needs_fps: reasons.append(f'FPS({mask_fps}→{TARGET_FPS})')
-                print(f"[준비] Mask {name}: {', '.join(reasons)} 변환 중...")
-                try:
-                    with FFMPEG_SEMAPHORE:
-                        subprocess.run(
-                            ['ffmpeg', '-y', '-i', mask_path,
-                             '-threads', '1',
-                             '-r', str(TARGET_FPS),
-                             '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
-                             '-c:a', 'copy', cached_mask],
-                            capture_output=True, check=True
-                        )
-                    converted.append('mask')
-                    print(f"[준비] Mask {name} 변환 완료")
-                except Exception as e:
-                    print(f"[준비] Mask 변환 실패: {e}")
-                    return jsonify({'error': f'Mask conversion failed: {e}'}), 500
+    return jsonify({'success': True, 'status': 'processing', 'message': 'Conversion started'})
 
-    return jsonify({
-        'success': True,
-        'converted': converted,
-        'message': f'Converted: {", ".join(converted)}' if converted else 'Already cached'
-    })
+
+@app.route('/api/conversion-status/<name>', methods=['GET'])
+def get_conversion_status(name):
+    """현재 변환 진행 상태 조회 (폴링 엔드포인트)"""
+    mask_source = request.args.get('mask_source', '')
+    status_key = f"{mask_source}_{name}"
+    
+    if status_key not in CONVERSION_STATUS:
+        return jsonify({'status': 'unknown'})
+        
+    return jsonify(CONVERSION_STATUS[status_key])
 
 
 @app.route('/api/video-meta/<name>', methods=['GET'])
@@ -864,31 +901,50 @@ def generate_mosaic():
     if not os.path.exists(mask_path):
         return jsonify({'error': f'Mask video not found: {video_name}.mp4 (source: {mask_source or "default"})'}), 404
 
-    # mosaic.py 실행 (루트 venv의 Python 사용 - cv2가 설치된 환경)
+    # mosaic.py 실행 (루루트 venv의 Python 사용 - cv2가 설치된 환경)
     mosaic_script = os.path.join(BASE_DIR, 'mosaic.py')
     mosaic_python = os.path.join(BASE_DIR, 'venv', 'bin', 'python')
     if not os.path.exists(mosaic_python):
         mosaic_python = sys.executable
-    try:
-        cmd = [mosaic_python, mosaic_script, '--task', task, '--number', number]
-        if mask_source:
-            cmd.extend(['--mask-source', mask_source])
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        if result.returncode != 0:
-            print(f"Mosaic generation error: {result.stderr}")
-            return jsonify({'error': f'Generation failed: {result.stderr[:200]}'}), 500
+    def generate_worker():
+        try:
+            cmd = [mosaic_python, mosaic_script, '--task', task, '--number', number]
+            if mask_source:
+                cmd.extend(['--mask-source', mask_source])
 
-        print(f"Mosaic generated: {result.stdout}")
-        return jsonify({
-            'success': True,
-            'message': 'Mosaic generated successfully',
-            'path': video_path
-        })
-    except subprocess.TimeoutExpired:
-        return jsonify({'error': 'Generation timed out (5min limit)'}), 500
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+            # PYTHONPATH 설정하여 utils 모듈을 찾을 수 있게 함
+            env = os.environ.copy()
+            env['PYTHONPATH'] = BASE_DIR + (':' + env.get('PYTHONPATH', '') if env.get('PYTHONPATH') else '')
+
+            with FFMPEG_SEMAPHORE:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env)
+            
+            if result.returncode != 0:
+                print(f"[백그라운드] Mosaic generation error: {result.stderr}")
+                CONVERSION_STATUS[status_key] = {'status': 'failed', 'error': result.stderr[:200]}
+            else:
+                print(f"[백그라운드] Mosaic generated: {result.stdout}")
+                CONVERSION_STATUS[status_key] = {'status': 'completed', 'path': video_path}
+        except subprocess.TimeoutExpired:
+            CONVERSION_STATUS[status_key] = {'status': 'failed', 'error': 'Generation timed out (5min)'}
+        except Exception as e:
+            CONVERSION_STATUS[status_key] = {'status': 'failed', 'error': str(e)}
+
+    # 백그라운드 작업 시작
+    status_key = f"mosaic_{mask_source}_{video_name}"
+    
+    if status_key in CONVERSION_STATUS and CONVERSION_STATUS[status_key]['status'] == 'processing':
+        return jsonify({'success': True, 'status': 'processing', 'message': 'Mosaic generation in progress'})
+        
+    CONVERSION_STATUS[status_key] = {'status': 'processing'}
+    Thread(target=generate_worker, daemon=True).start()
+
+    return jsonify({
+        'success': True,
+        'status': 'processing',
+        'message': 'Mosaic generation started in background'
+    })
 
 
 @app.route('/video/mosaic/<task>/<filename>')
@@ -1105,27 +1161,45 @@ def generate_overlay():
     overlay_python = os.path.join(BASE_DIR, 'venv', 'bin', 'python')
     if not os.path.exists(overlay_python):
         overlay_python = sys.executable
-    try:
-        cmd = [overlay_python, overlay_script, '--task', task, '--number', number, '--opacity', str(opacity)]
-        if mask_source:
-            cmd.extend(['--mask-source', mask_source])
 
-        with FFMPEG_SEMAPHORE:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        if result.returncode != 0:
-            print(f"Overlay generation error: {result.stderr}")
-            return jsonify({'error': f'Generation failed: {result.stderr[:200]}'}), 500
+    def overlay_worker():
+        try:
+            cmd = [overlay_python, overlay_script, '--task', task, '--number', number, '--opacity', str(opacity)]
+            if mask_source:
+                cmd.extend(['--mask-source', mask_source])
 
-        print(f"Overlay generated: {result.stdout}")
-        return jsonify({
-            'success': True,
-            'message': 'Overlay generated successfully',
-            'path': video_path
-        })
-    except subprocess.TimeoutExpired:
-        return jsonify({'error': 'Generation timed out (10min limit)'}), 500
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+            # PYTHONPATH 설정하여 utils 모듈을 찾을 수 있게 함
+            env = os.environ.copy()
+            env['PYTHONPATH'] = BASE_DIR + (':' + env.get('PYTHONPATH', '') if env.get('PYTHONPATH') else '')
+
+            with FFMPEG_SEMAPHORE:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=600, env=env)
+                
+            if result.returncode != 0:
+                print(f"[백그라운드] Overlay generation error: {result.stderr}")
+                CONVERSION_STATUS[status_key] = {'status': 'failed', 'error': result.stderr[:200]}
+            else:
+                print(f"[백그라운드] Overlay generated: {result.stdout}")
+                CONVERSION_STATUS[status_key] = {'status': 'completed', 'path': video_path}
+        except subprocess.TimeoutExpired:
+            CONVERSION_STATUS[status_key] = {'status': 'failed', 'error': 'Generation timed out (10min)'}
+        except Exception as e:
+            CONVERSION_STATUS[status_key] = {'status': 'failed', 'error': str(e)}
+
+    # 백그라운드 작업 시작
+    status_key = f"overlay_{mask_source}_{video_name}"
+    
+    if status_key in CONVERSION_STATUS and CONVERSION_STATUS[status_key]['status'] == 'processing':
+        return jsonify({'success': True, 'status': 'processing', 'message': 'Overlay generation in progress'})
+        
+    CONVERSION_STATUS[status_key] = {'status': 'processing'}
+    Thread(target=overlay_worker, daemon=True).start()
+
+    return jsonify({
+        'success': True,
+        'status': 'processing',
+        'message': 'Overlay generation started in background'
+    })
 
 
 @app.route('/video/overlay/<task>/<filename>')
@@ -1235,8 +1309,8 @@ def serve_masks_video(source, filename):
             with FFMPEG_SEMAPHORE:
                 subprocess.run(
                     ['ffmpeg', '-y', '-i', original_path,
-                     '-threads', '1',
-                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+                     '-threads', '2',
+                     '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
                      '-c:a', 'copy', cached_path],
                     capture_output=True, check=True
                 )
