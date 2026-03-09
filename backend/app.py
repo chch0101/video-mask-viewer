@@ -18,10 +18,22 @@ from utils.video_processing import get_video_codec, get_video_fps, convert_to_h2
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
 
 # S3 설정 (선택적)
+print("=" * 50)
+print("[DEBUG] Environment Variables Check:")
+print(f"  USE_S3 raw value: '{os.environ.get('USE_S3', 'NOT_SET')}'")
+print(f"  S3_BUCKET: '{os.environ.get('S3_BUCKET', 'NOT_SET')}'")
+print(f"  S3_REGION: '{os.environ.get('S3_REGION', 'NOT_SET')}'")
+print(f"  S3_PREFIX: '{os.environ.get('S3_PREFIX', 'NOT_SET')}'")
+print(f"  AWS_ACCESS_KEY_ID: '{os.environ.get('AWS_ACCESS_KEY_ID', 'NOT_SET')[:10] if os.environ.get('AWS_ACCESS_KEY_ID') else 'NOT_SET'}...'")
+print(f"  AWS_SECRET_ACCESS_KEY: '{'SET' if os.environ.get('AWS_SECRET_ACCESS_KEY') else 'NOT_SET'}'")
+print("=" * 50)
+
 USE_S3 = os.environ.get('USE_S3', 'false').lower() == 'true'
 S3_BUCKET = os.environ.get('S3_BUCKET', '')
 S3_REGION = os.environ.get('S3_REGION', 'ap-northeast-2')
 S3_PREFIX = os.environ.get('S3_PREFIX', 'video')  # S3 내 비디오 폴더 경로
+
+print(f"[S3] USE_S3 evaluated to: {USE_S3}")
 
 s3_client = None
 if USE_S3:
@@ -299,6 +311,8 @@ def prepare_video(name):
     mask_path = os.path.join(VIDEO_DIR, 'mask', f'{name}.mp4')
 
     if not os.path.exists(source_path):
+        if USE_S3 and s3_file_exists(f"{S3_PREFIX}/source/{name}.mp4"):
+            return jsonify({'success': True, 'converted': [], 'message': 'S3 video exists'})
         return jsonify({'error': 'Video not found'}), 404
 
     converted = []
@@ -365,6 +379,14 @@ def get_video_meta(name):
     mask_path = os.path.join(VIDEO_DIR, 'mask', f'{name}.mp4')
 
     if not os.path.exists(source_path):
+        if USE_S3 and s3_file_exists(f"{S3_PREFIX}/source/{name}.mp4"):
+            # S3 영상일 경우 접근 비용을 줄이기 위해 기본 30fps 반환
+            return jsonify({
+                'fps': TARGET_FPS,
+                'rawFps': TARGET_FPS,
+                'sourceFps': TARGET_FPS,
+                'maskFps': TARGET_FPS
+            })
         return jsonify({'error': 'Video not found'}), 404
 
     source_fps_raw = get_video_fps(source_path)
