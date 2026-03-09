@@ -31,6 +31,7 @@ function AppContent() {
   const [selectedMaskSource, setSelectedMaskSource] = useState('')
   const [pendingMaskSource, setPendingMaskSource] = useState('') // UI용 즉시 반영
   const [maskSourceLoading, setMaskSourceLoading] = useState(false)
+  const [videoUrls, setVideoUrls] = useState({})
 
   const videoPlayerRef = useRef(null)
   const maskSourceDebounceRef = useRef(null)
@@ -173,10 +174,17 @@ function AppContent() {
     }
   }, [currentVideo?.name, selectedMaskSource, fetchEvaluationHistory])
 
-  // mask_source 변경 시 비디오 목록도 갱신 (평가 상태 반영)
+  // mask_source 변경 시 비디오 목록도 갱신 (평가 상태 반영) + S3 URL 갱신
   useEffect(() => {
     if (selectedMaskSource) {
       fetchVideos(selectedMaskSource)
+      // mask source 변경 시 현재 비디오의 S3 URL도 갱신
+      if (currentVideo?.name) {
+        fetch(`/api/video-urls/${currentVideo.name}?mask_source=${selectedMaskSource}`)
+          .then(res => res.json())
+          .then(data => setVideoUrls(data))
+          .catch(() => setVideoUrls({}))
+      }
     }
   }, [selectedMaskSource, fetchVideos])
 
@@ -313,6 +321,19 @@ function AppContent() {
         }
       } catch (err) {
         console.error('Video prepare request failed:', err)
+      }
+
+      // S3 pre-signed URL 가져오기
+      try {
+        const urlParams = selectedMaskSource
+          ? `?mask_source=${selectedMaskSource}`
+          : ''
+        const urlRes = await fetch(`/api/video-urls/${videoName}${urlParams}`)
+        const urlData = await urlRes.json()
+        setVideoUrls(urlData)
+      } catch (err) {
+        console.error('Failed to fetch video URLs:', err)
+        setVideoUrls({})
       }
 
       setVideoPreparing(false)
@@ -617,6 +638,7 @@ function AppContent() {
         viewingOverlay={viewingOverlay}
         videoPreparing={videoPreparing}
         selectedMaskSource={selectedMaskSource}
+        videoUrls={videoUrls}
         onMetadataLoaded={handleMetadataLoaded}
         onTimeUpdate={handleTimeUpdate}
         onMaskLoaded={handleMaskLoaded}

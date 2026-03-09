@@ -18,6 +18,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
   viewingOverlay,
   videoPreparing = false,
   selectedMaskSource = '',
+  videoUrls = {},
   onMetadataLoaded,
   onTimeUpdate,
   onMaskLoaded,
@@ -875,7 +876,9 @@ const VideoPlayer = forwardRef(function VideoPlayer({
         {/* 히든 비디오 소스들 (Canvas 렌더링 소스로만 사용) */}
         <video
           ref={sourceVideoRef}
-          src={currentVideo ? `/video/source/${currentVideo.source}` : ''}
+          src={currentVideo
+            ? (videoUrls.source || `/video/source/${currentVideo.source}`)
+            : ''}
           crossOrigin="anonymous"
           muted
           playsInline
@@ -883,7 +886,9 @@ const VideoPlayer = forwardRef(function VideoPlayer({
         />
         <video
           ref={maskVideoRef}
-          src={currentVideo && selectedMaskSource ? `/video/masks/${selectedMaskSource}/${currentVideo.mask}` : ''}
+          src={currentVideo && selectedMaskSource
+            ? (videoUrls.mask || `/video/masks/${selectedMaskSource}/${currentVideo.mask}`)
+            : ''}
           crossOrigin="anonymous"
           muted
           playsInline

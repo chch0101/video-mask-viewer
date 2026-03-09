@@ -1378,6 +1378,37 @@ def open_browser():
 TARGET_FPS = 30
 
 
+@app.route('/api/video-urls/<name>', methods=['GET'])
+def get_video_urls(name):
+    """S3 pre-signed URL 반환 (프론트엔드에서 직접 사용)"""
+    mask_source = request.args.get('mask_source', '')
+    urls = {}
+
+    if USE_S3 and s3_client:
+        # source URL
+        source_key = f"{S3_PREFIX}/source/{name}.mp4"
+        source_local = os.path.join(VIDEO_DIR, 'source', f'{name}.mp4')
+        if not os.path.exists(source_local):
+            url = get_s3_presigned_url(source_key)
+            if url:
+                urls['source'] = url
+
+        # mask URL
+        if mask_source:
+            mask_key = f"{S3_PREFIX}/masks/{mask_source}/{name}.mp4"
+            mask_local = os.path.join(VIDEO_DIR, 'masks', mask_source, f'{name}.mp4')
+        else:
+            mask_key = f"{S3_PREFIX}/mask/{name}.mp4"
+            mask_local = os.path.join(VIDEO_DIR, 'mask', f'{name}.mp4')
+
+        if not os.path.exists(mask_local):
+            url = get_s3_presigned_url(mask_key)
+            if url:
+                urls['mask'] = url
+
+    return jsonify(urls)
+
+
 @app.route('/api/storage-status', methods=['GET'])
 def get_storage_status():
     """스토리지 상태 확인 (로컬/S3)"""
