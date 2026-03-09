@@ -50,7 +50,6 @@ if USE_S3:
         from botocore.client import Config
         s3_client = boto3.client(
             's3',
-            endpoint_url=f'https://s3.{S3_REGION}.amazonaws.com',
             region_name=S3_REGION,
             aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
             aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
@@ -742,16 +741,14 @@ def serve_source_video(filename):
     source_path = os.path.join(source_dir, filename)
 
     if not os.path.exists(source_path):
-        # S3 폴백 확인
+        # S3: pre-signed URL로 즉시 redirect (다운로드 없이)
         if USE_S3:
             s3_key = f"{S3_PREFIX}/source/{filename}"
-            if s3_file_exists(s3_key):
-                if not download_from_s3(s3_key, source_path):
-                    url = get_s3_presigned_url(s3_key)
-                    if url:
-                        return redirect(url)
-        if not os.path.exists(source_path):
-            return jsonify({'error': 'File not found'}), 404
+            url = get_s3_presigned_url(s3_key)
+            if url:
+                print(f"[S3 Redirect] source/{filename}")
+                return redirect(url)
+        return jsonify({'error': 'File not found'}), 404
 
     fps = get_video_fps(source_path)
     if abs(fps - TARGET_FPS) > 0.5:
@@ -806,17 +803,16 @@ def serve_mask_video(filename):
     original_path = os.path.join(mask_dir, filename)
 
     if not os.path.exists(original_path):
-        # S3 폴백 확인
+        # S3: pre-signed URL로 즉시 redirect (다운로드 없이)
         if USE_S3:
             s3_key = f"{S3_PREFIX}/mask/{filename}"
-            if s3_file_exists(s3_key):
-                if not download_from_s3(s3_key, original_path):
-                    url = get_s3_presigned_url(s3_key)
-                    if url:
-                        return redirect(url)
-        if not os.path.exists(original_path):
-            return jsonify({'error': 'File not found'}), 404
+            url = get_s3_presigned_url(s3_key)
+            if url:
+                print(f"[S3 Redirect] mask/{filename}")
+                return redirect(url)
+        return jsonify({'error': 'File not found'}), 404
 
+    # 로컬 파일: 코덱/FPS 변환 처리
     codec = get_video_codec(original_path)
     fps = get_video_fps(original_path)
     needs_codec = codec != 'h264'
@@ -868,7 +864,7 @@ def serve_mask_video(filename):
                      '-c:a', 'copy', cached_path],
                     capture_output=True, check=True
                 )
-        
+
         print(f"[변환] Mask {filename} 변환 완료")
 
         # 변환 완료 후 마커 파일 삭제
@@ -1007,16 +1003,14 @@ def serve_mosaic_video(task, filename):
     mosaic_path = os.path.join(mosaic_dir, filename)
 
     if not os.path.exists(mosaic_path):
-        # S3 폴백 확인
+        # S3: pre-signed URL로 즉시 redirect
         if USE_S3:
             s3_key = f"{S3_PREFIX}/mosaic/{task}/{filename}"
-            if s3_file_exists(s3_key):
-                if not download_from_s3(s3_key, mosaic_path):
-                    url = get_s3_presigned_url(s3_key)
-                    if url:
-                        return redirect(url)
-        if not os.path.exists(mosaic_path):
-            return jsonify({'error': 'File not found'}), 404
+            url = get_s3_presigned_url(s3_key)
+            if url:
+                print(f"[S3 Redirect] mosaic/{task}/{filename}")
+                return redirect(url)
+        return jsonify({'error': 'File not found'}), 404
 
     # 코덱 및 FPS 확인 후 필요 시 변환
     codec = get_video_codec(mosaic_path)
@@ -1078,16 +1072,14 @@ def serve_mosaic_video_with_source(mask_source, task, filename):
     mosaic_path = os.path.join(mosaic_dir, filename)
 
     if not os.path.exists(mosaic_path):
-        # S3 폴백 확인
+        # S3: pre-signed URL로 즉시 redirect
         if USE_S3:
             s3_key = f"{S3_PREFIX}/mosaic/{mask_source}/{task}/{filename}"
-            if s3_file_exists(s3_key):
-                if not download_from_s3(s3_key, mosaic_path):
-                    url = get_s3_presigned_url(s3_key)
-                    if url:
-                        return redirect(url)
-        if not os.path.exists(mosaic_path):
-            return jsonify({'error': 'File not found'}), 404
+            url = get_s3_presigned_url(s3_key)
+            if url:
+                print(f"[S3 Redirect] mosaic/{mask_source}/{task}/{filename}")
+                return redirect(url)
+        return jsonify({'error': 'File not found'}), 404
 
     # 코덱 및 FPS 확인 후 필요 시 변환
     codec = get_video_codec(mosaic_path)
@@ -1262,16 +1254,14 @@ def serve_overlay_video(task, filename):
     overlay_path = os.path.join(overlay_dir, filename)
 
     if not os.path.exists(overlay_path):
-        # S3 폴백 확인
+        # S3: pre-signed URL로 즉시 redirect
         if USE_S3:
             s3_key = f"{S3_PREFIX}/overlay/{task}/{filename}"
-            if s3_file_exists(s3_key):
-                if not download_from_s3(s3_key, overlay_path):
-                    url = get_s3_presigned_url(s3_key)
-                    if url:
-                        return redirect(url)
-        if not os.path.exists(overlay_path):
-            return jsonify({'error': 'File not found'}), 404
+            url = get_s3_presigned_url(s3_key)
+            if url:
+                print(f"[S3 Redirect] overlay/{task}/{filename}")
+                return redirect(url)
+        return jsonify({'error': 'File not found'}), 404
 
     return send_from_directory(overlay_dir, filename)
 
@@ -1283,16 +1273,14 @@ def serve_overlay_video_with_source(mask_source, task, filename):
     overlay_path = os.path.join(overlay_dir, filename)
 
     if not os.path.exists(overlay_path):
-        # S3 폴백 확인
+        # S3: pre-signed URL로 즉시 redirect
         if USE_S3:
             s3_key = f"{S3_PREFIX}/overlay/{mask_source}/{task}/{filename}"
-            if s3_file_exists(s3_key):
-                if not download_from_s3(s3_key, overlay_path):
-                    url = get_s3_presigned_url(s3_key)
-                    if url:
-                        return redirect(url)
-        if not os.path.exists(overlay_path):
-            return jsonify({'error': 'File not found'}), 404
+            url = get_s3_presigned_url(s3_key)
+            if url:
+                print(f"[S3 Redirect] overlay/{mask_source}/{task}/{filename}")
+                return redirect(url)
+        return jsonify({'error': 'File not found'}), 404
 
     return send_from_directory(overlay_dir, filename)
 
@@ -1304,17 +1292,16 @@ def serve_masks_video(source, filename):
     original_path = os.path.join(masks_dir, filename)
 
     if not os.path.exists(original_path):
-        # S3 폴백 확인
+        # S3: pre-signed URL로 즉시 redirect (다운로드 없이)
         if USE_S3:
             s3_key = f"{S3_PREFIX}/masks/{source}/{filename}"
-            if s3_file_exists(s3_key):
-                if not download_from_s3(s3_key, original_path):
-                    url = get_s3_presigned_url(s3_key)
-                    if url:
-                        return redirect(url)
-        if not os.path.exists(original_path):
-            return jsonify({'error': 'File not found'}), 404
+            url = get_s3_presigned_url(s3_key)
+            if url:
+                print(f"[S3 Redirect] masks/{source}/{filename}")
+                return redirect(url)
+        return jsonify({'error': 'File not found'}), 404
 
+    # 로컬 파일: 코덱/FPS 변환 처리
     codec = get_video_codec(original_path)
     fps = get_video_fps(original_path)
     needs_codec = codec != 'h264'
