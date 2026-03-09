@@ -421,6 +421,8 @@ def get_videos():
 def prepare_video(name):
     """비디오 시청 전 필요한 변환을 백그라운드로 시작 (Source & Mask) 및 상태 반환. 
     시간 초과(499) 방지를 위한 비동기 방식으로 수정됨."""
+    # Ensure name does not already have .mp4 appended from frontend
+    name = name.replace('.mp4', '')
     data = request.json
     mask_source = data.get('mask_source', '')
     
@@ -520,6 +522,7 @@ def prepare_video(name):
 @app.route('/api/conversion-status/<name>', methods=['GET'])
 def get_conversion_status(name):
     """현재 변환 진행 상태 조회 (폴링 엔드포인트)"""
+    name = name.replace('.mp4', '')
     mask_source = request.args.get('mask_source', '')
     status_key = f"{mask_source}_{name}"
     
@@ -532,6 +535,7 @@ def get_conversion_status(name):
 @app.route('/api/video-meta/<name>', methods=['GET'])
 def get_video_meta(name):
     """비디오 메타데이터 (소스, 마스크 각각의 FPS 서빙 기준) 조회"""
+    name = name.replace('.mp4', '')
     source_path = os.path.join(VIDEO_DIR, 'source', f'{name}.mp4')
     mask_path = os.path.join(VIDEO_DIR, 'mask', f'{name}.mp4')
 
@@ -1425,6 +1429,7 @@ TARGET_FPS = 30
 @app.route('/api/video-urls/<name>', methods=['GET'])
 def get_video_urls(name):
     """S3 pre-signed URL 반환 (프론트엔드에서 직접 사용)"""
+    name = name.replace('.mp4', '')
     mask_source = request.args.get('mask_source', '')
     urls = {}
 
