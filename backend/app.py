@@ -610,6 +610,40 @@ def save_evaluation():
     })
 
 
+@app.route('/api/evaluations/sync-s3', methods=['POST'])
+def sync_evaluations_to_s3():
+    """로컬에 저장된 모든 평가 CSV 파일을 S3로 동기화"""
+    if not USE_S3:
+        return jsonify({'error': 'S3 is not enabled'}), 400
+    
+    sync_count = 0
+    errors = []
+    
+    def sync_thread():
+        nonlocal sync_count
+        try:
+            for root, dirs, files in os.walk(EVALUATIONS_DIR):
+                for file in files:
+                    if file.endswith('.csv'):
+                        filepath = os.path.join(root, file)
+                        rel_path = os.path.relpath(filepath, EVALUATIONS_DIR)
+                        s3_key = f"{S3_PREFIX}/evaluations/{rel_path}"
+                        if upload_to_s3(filepath, s3_key):
+                            sync_count += 1
+            print(f"[S3] Manual sync completed: {sync_count} files")
+        except Exception as e:
+            print(f"[S3] Manual sync failed: {e}")
+
+    # 백그라운드에서 동기화 시작
+    thread = threading.Thread(target=sync_thread)
+    thread.start()
+    
+    return jsonify({
+        'success': True,
+        'message': 'Sync started in background'
+    })
+
+
 @app.route('/api/evaluations', methods=['GET'])
 def list_evaluations():
     """저장된 평가 목록 조회 (mask_source 파라미터로 필터링)"""
