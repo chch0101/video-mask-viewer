@@ -62,6 +62,19 @@ if USE_S3:
         USE_S3 = False
 
 
+def upload_to_s3(local_path, s3_key):
+    """파일을 S3에 업로드"""
+    if not s3_client or not S3_BUCKET:
+        return False
+    try:
+        s3_client.upload_file(local_path, S3_BUCKET, s3_key)
+        print(f"[S3] Uploaded: {local_path} -> s3://{S3_BUCKET}/{s3_key}")
+        return True
+    except Exception as e:
+        print(f"[S3] Upload failed: {e}")
+        return False
+
+
 def get_s3_presigned_url(key, expiration=3600):
     """S3 pre-signed URL 생성"""
     if not s3_client or not S3_BUCKET:
@@ -581,6 +594,12 @@ def save_evaluation():
                 result if result else 'N/A',
                 frame_str
             ])
+
+    # S3 업로드 (선택사항)
+    if USE_S3:
+        s3_filename = f"evaluations/{mask_source}/{task_name}/{filename}" if mask_source else f"evaluations/{task_name}/{filename}"
+        s3_key = f"{S3_PREFIX}/{s3_filename}"
+        upload_to_s3(filepath, s3_key)
 
     return jsonify({
         'success': True,
