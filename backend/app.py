@@ -145,8 +145,12 @@ VIDEO_DIR = os.environ.get('VIDEO_DIR', os.path.join(BASE_DIR, 'video'))
 EVALUATIONS_DIR = os.environ.get('EVALUATIONS_DIR', os.path.join(BASE_DIR, 'evaluations'))
 CACHE_DIR = os.path.join(RESOURCE_DIR, 'cache')
 STATIC_DIR = os.path.join(RESOURCE_DIR, 'static')
+# 환경 설정
 S3_CACHE_FILE = os.path.join(CACHE_DIR, 's3_cache.json')
-S3_CACHE_EXPIRY = 3600  # 1 hour
+S3_CACHE_EXPIRY = 3600  # 1 시간
+
+# S3 요청시 다중 사용자 접속에 의한 병목락 (Lag) 방지용 Lock 객체
+S3_CACHE_LOCK = threading.Lock()
 
 # Flask 앱 생성 (정적 파일 서빙 설정)
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='')
@@ -197,70 +201,87 @@ def download_from_s3(s3_key, local_path):
 
 
 def get_s3_cache():
-    """S3 버킷 메타데이터(소스/마스크 목록 등)를 로컬에 캐시하여 API 호출 비용 및 속도 개선"""
+    """S3 버킷 메타데이터(소스/마스크 목록 등)를 로컬에 캐시하여 API 호출 비용 및 병목 방지"""
     if not USE_S3 or not s3_client:
-        return {'sources': [], 'videos': []}
+        return {'sources': [], 'videos': [], 's3_files': set()}
     
-    # 캐시가 있고 유효한지 확인
-    if os.path.exists(S3_CACHE_FILE):
+    # 락을 걸어서 여러 요청이 동시에 S3 paginator를 돌리는 현상을 방지
+    with S3_CACHE_LOCK:
+        # 1. 락 획득 후 다시 유효기간 체크
+        if os.path.exists(S3_CACHE_FILE):
+            try:
+                with open(S3_CACHE_FILE, 'r', encoding='utf-8') as f:
+                    cache_data = json.load(f)
+                
+                # 유효시간 내의 캐시면 즉시 반환
+                if time.time() - cache_data.get('timestamp', 0) < S3_CACHE_EXPIRY:
+                    # 마이그레이션 호환성을 위해 s3_files dict key 생성
+                    if 's3_files' not in cache_data:
+                        cache_data['s3_files'] = []
+                    # set 속도는 매우 빠르니 런타임에서 변환해서 사용 (json엔 list로 저장)
+                    cache_data['_s3_files_set'] = set(cache_data.get('s3_files', []))
+                    return cache_data
+            except Exception as e:
+                print(f"[S3 Cache] Error reading cache: {e}")
+        
+        # 2. 캐시 갱신 시작
+        print("[S3 Cache] Refreshing S3 metadata cache. This may take a moment for large buckets...")
+        cache_data = {
+            'timestamp': time.time(),
+            'sources': [],
+            'videos': [],
+            's3_files': []
+        }
+        
         try:
-            with open(S3_CACHE_FILE, 'r', encoding='utf-8') as f:
-                cache_data = json.load(f)
+            paginator = s3_client.get_paginator('list_objects_v2')
+            s3_files_set = set()
             
-            # 유효시간 내의 캐시면 반환
-            if time.time() - cache_data.get('timestamp', 0) < S3_CACHE_EXPIRY:
-                return cache_data
+            # source 영상 캐시
+            prefix_source = f"{S3_PREFIX}/source/"
+            for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix_source):
+                for obj in page.get('Contents', []):
+                    key = obj['Key']
+                    s3_files_set.add(key)
+                    if key.endswith('.mp4'):
+                        filename = key.replace(prefix_source, '')
+                        if '/' not in filename:  # 루트 바로 아래 파일만
+                            cache_data['videos'].append(filename)
+                            
+            # mask sources 및 파일 개수 캐시
+            prefix_masks = f"{S3_PREFIX}/masks/"
+            source_counts = {}
+            for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix_masks):
+                for obj in page.get('Contents', []):
+                    key = obj['Key']
+                    s3_files_set.add(key)
+                    if key.endswith('.mp4'):
+                        # 패턴: video/masks/source_name/filename.mp4
+                        parts = key.replace(prefix_masks, '').split('/')
+                        if len(parts) == 2:
+                            source_name = parts[0]
+                            source_counts[source_name] = source_counts.get(source_name, 0) + 1
+                            
+            for source_name, count in source_counts.items():
+                cache_data['sources'].append({
+                    'name': source_name,
+                    'count': count
+                })
+                
+            # s3_files를 list로 변환하여 json 직렬화 가능케 함
+            cache_data['s3_files'] = list(s3_files_set)
+            
+            # 파일로 저장
+            with open(S3_CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f)
+                
+            # 런타임 전용 set
+            cache_data['_s3_files_set'] = s3_files_set
+            
+            print("[S3 Cache] Cache refreshed successfully!")
         except Exception as e:
-            print(f"[S3 Cache] Error reading cache: {e}")
-    
-    # 캐시 갱신
-    print("[S3 Cache] Refreshing S3 metadata cache. This may take a moment for large buckets...")
-    cache_data = {
-        'timestamp': time.time(),
-        'sources': [],
-        'videos': []
-    }
-    
-    try:
-        paginator = s3_client.get_paginator('list_objects_v2')
-        
-        # 1. source 영상 캐시
-        prefix_source = f"{S3_PREFIX}/source/"
-        for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix_source):
-            for obj in page.get('Contents', []):
-                key = obj['Key']
-                if key.endswith('.mp4'):
-                    filename = key.replace(prefix_source, '')
-                    if '/' not in filename:  # 루트 바로 아래 파일만
-                        cache_data['videos'].append(filename)
-                        
-        # 2. mask sources 및 파일 개수 캐시
-        prefix_masks = f"{S3_PREFIX}/masks/"
-        source_counts = {}
-        for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix_masks):
-            for obj in page.get('Contents', []):
-                key = obj['Key']
-                if key.endswith('.mp4'):
-                    # 패턴: video/masks/source_name/filename.mp4
-                    parts = key.replace(prefix_masks, '').split('/')
-                    if len(parts) == 2:
-                        source_name = parts[0]
-                        source_counts[source_name] = source_counts.get(source_name, 0) + 1
-                        
-        for source_name, count in source_counts.items():
-            cache_data['sources'].append({
-                'name': source_name,
-                'count': count
-            })
+            print(f"[S3 Cache] Failed to refresh cache: {e}")
             
-        # 파일로 저장
-        with open(S3_CACHE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(cache_data, f)
-            
-        print("[S3 Cache] Cache refreshed successfully!")
-    except Exception as e:
-        print(f"[S3 Cache] Failed to refresh cache: {e}")
-        
     return cache_data
 
 
@@ -414,8 +435,14 @@ def prepare_video(name):
     status_key = f"{mask_source}_{name}"
 
     if not os.path.exists(source_path):
-        if USE_S3 and s3_file_exists(f"{S3_PREFIX}/source/{name}.mp4"):
-            return jsonify({'success': True, 'converted': [], 'message': 'S3 video exists'})
+        # 잦은 s3_file_exists()의 오버헤드 대신 cache 메모리 해시맵으로 체크
+        if USE_S3:
+            s3_key = f"{S3_PREFIX}/source/{name}.mp4"
+            cache = get_s3_cache()
+            if '_s3_files_set' in cache and s3_key in cache['_s3_files_set']:
+                return jsonify({'success': True, 'converted': [], 'message': 'S3 video exists'})
+            elif s3_file_exists(s3_key): # Fallback just in case cache wasn't updated
+                return jsonify({'success': True, 'converted': [], 'message': 'S3 video exists'})
         return jsonify({'error': 'Video not found'}), 404
 
     # 2. 이미 백그라운드에서 진행 중인지 확인
@@ -509,14 +536,22 @@ def get_video_meta(name):
     mask_path = os.path.join(VIDEO_DIR, 'mask', f'{name}.mp4')
 
     if not os.path.exists(source_path):
-        if USE_S3 and s3_file_exists(f"{S3_PREFIX}/source/{name}.mp4"):
-            # S3 영상일 경우 접근 비용을 줄이기 위해 기본 30fps 반환
-            return jsonify({
-                'fps': TARGET_FPS,
-                'rawFps': TARGET_FPS,
-                'sourceFps': TARGET_FPS,
-                'maskFps': TARGET_FPS
-            })
+        if USE_S3:
+            s3_key = f"{S3_PREFIX}/source/{name}.mp4"
+            cache = get_s3_cache()
+            # 캐시에 S3 파일이 존재하면 True를 반환
+            s3_exists = ('_s3_files_set' in cache and s3_key in cache['_s3_files_set']) or s3_file_exists(s3_key)
+            if s3_exists:
+                # S3 영상일 경우 접근 비용을 줄이기 위해 브라우저에서 읽은 실제 duration에 의존
+                # 백엔드는 억지로 TARGET_FPS로 교정하지 않고 30fps 원본이라도 프론트가 알아서 처리하게 null 응답을 권장
+                # 호환성을 위해 우선 raw 값을 내보냄 (프론트엔드도 durationRatio 처리로 알아서 맞춤)
+                return jsonify({
+                    'fps': TARGET_FPS,
+                    'rawFps': TARGET_FPS,
+                    'sourceFps': TARGET_FPS,
+                    'maskFps': TARGET_FPS,
+                    'is_s3': True
+                })
         return jsonify({'error': 'Video not found'}), 404
 
     source_fps_raw = get_video_fps(source_path)

@@ -388,22 +388,6 @@ const VideoPlayer = forwardRef(function VideoPlayer({
           setMaskConverting(true)
         }
       }, 500)
-
-      // 실제 FPS 조회
-      fetch(`/api/video-meta/${currentVideo.name}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.fps) {
-            fpsRef.current = data.fps
-          }
-          if (data.maskFps && data.maskFps > 0) {
-            maskFpsRef.current = data.maskFps
-          }
-        })
-        .catch(() => {
-          fpsRef.current = 30
-          maskFpsRef.current = 30
-        })
     }
     return () => {
       if (sourceLoadTimerRef.current) clearTimeout(sourceLoadTimerRef.current)
@@ -411,6 +395,38 @@ const VideoPlayer = forwardRef(function VideoPlayer({
       if (retryTimerRef.current) clearInterval(retryTimerRef.current)
     }
   }, [currentVideo])
+
+  // 비디오 메타데이터 (FPS 관련) 로드
+  useEffect(() => {
+    let active = true
+    if (!currentVideo) return
+
+    fetch(`/api/video-meta/${currentVideo.source.replace('.mp4', '')}`)
+      .then(res => res.json())
+      .then(data => {
+        if (!active) return
+        if (data.fps) {
+          fpsRef.current = data.sourceFps || 30
+          maskFpsRef.current = data.maskFps || 30
+          updateDebugInfo()
+
+          // is_s3 플래그가 전송되면, S3에서 다이렉트로 서빙되는 영상이므로
+          // 백엔드 FFMPEG의 강제 30fps 변환을 거치지 않음. 
+          // 따라서 HTML5 Video 태그의 오리지널 길이를 전적으로 신뢰해야 함.
+          if (data.is_s3) {
+            console.log("S3 Direct Video detected. Will rely strictly on HTML5 duration matching.", data)
+          }
+
+          if (onMetadataLoaded) {
+            // (CSV 맵핑용으로 원본 fps 전달)
+            onMetadataLoaded({ fps: data.fps, is_s3: data.is_s3 })
+          }
+        }
+      })
+      .catch(err => console.error('Failed to load video meta:', err))
+
+    return () => { active = false }
+  }, [currentVideo, onMetadataLoaded])
 
   // selectedMaskSource 변경 시 마스크 로딩 상태 리셋
   useEffect(() => {
@@ -436,23 +452,24 @@ const VideoPlayer = forwardRef(function VideoPlayer({
 
     if (!sourceVideo || !maskVideo) return
 
+    // 소스 비디오 메타데이터 (길이 등) 로드 시
     const handleSourceMetadata = () => {
-      const dur = sourceVideo.duration
-      const fps = fpsRef.current
-      setDuration(dur)
-      onMetadataLoaded?.({
-        frameCount: Math.floor(dur * fps),
-        fps: fps,
-        duration: dur
-      })
-      // duration 비율 계산 및 저장
-      if (maskVideo.duration && maskVideo.duration > 0) {
-        durationRatioRef.current = maskVideo.duration / dur
-        console.log(`[Sync] Duration ratio: ${durationRatioRef.current.toFixed(4)} (mask: ${maskVideo.duration.toFixed(2)}s, source: ${dur.toFixed(2)}s)`)
+      if (sourceVideo) {
+        setDuration(sourceVideo.duration)
+        if (maskVideo && maskVideo.readyState >= 1) {
+          // Both are ready, calculate duration ratio accurately
+          // S3 videos may have differing length from 30fps conversions, so we need precise math
+          durationRatioRef.current = maskVideo.duration / sourceVideo.duration
+
+          // fallback safeguard for edge cases
+          if (!isFinite(durationRatioRef.current) || durationRatioRef.current <= 0) {
+            durationRatioRef.current = 1
+          }
+        }
+        else {
+          durationRatioRef.current = 1 // default until mask loads
+        }
       }
-      updateDebugInfo()
-      // 메타데이터 로드 후 초기 프레임 그리기
-      requestAnimationFrame(() => drawFrameRef.current?.())
     }
 
     const handleTimeUpdate = () => {
@@ -483,16 +500,20 @@ const VideoPlayer = forwardRef(function VideoPlayer({
       }
     }
 
+    // 마스크 비디오 데이터 로드 시 동기화 비율 재계산
     const handleMaskReady = () => {
       maskLoadedRef.current = true
       if (maskLoadTimerRef.current) clearTimeout(maskLoadTimerRef.current)
       setMaskConverting(false)
-      // duration 비율 계산 및 저장
-      if (sourceVideo.duration && sourceVideo.duration > 0 && maskVideo.duration > 0) {
-        durationRatioRef.current = maskVideo.duration / sourceVideo.duration
-        console.log(`[Sync] Duration ratio: ${durationRatioRef.current.toFixed(4)} (mask: ${maskVideo.duration.toFixed(2)}s, source: ${sourceVideo.duration.toFixed(2)}s)`)
-      }
       updateDebugInfo()
+
+      if (sourceVideo && sourceVideo.readyState >= 1 && maskVideo && maskVideo.readyState >= 1) {
+        durationRatioRef.current = maskVideo.duration / sourceVideo.duration
+        if (!isFinite(durationRatioRef.current) || durationRatioRef.current <= 0) {
+          durationRatioRef.current = 1
+        }
+      }
+      console.log(`Mask video ready. Duration ratio calculated: ${durationRatioRef.current}`)
       // 마스크 로드 완료 후 캔버스 갱신
       requestAnimationFrame(() => drawFrameRef.current?.())
       // 마스크 로드 완료 콜백 호출
