@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, send_from_directory, send_file
+from flask import Flask, jsonify, request, send_from_directory, send_file, redirect
 from flask_cors import CORS
 import os
 import sys
@@ -16,6 +16,54 @@ from utils.video_processing import get_video_codec, get_video_fps, convert_to_h2
 
 # .env 파일 로드
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
+
+# S3 설정 (선택적)
+USE_S3 = os.environ.get('USE_S3', 'false').lower() == 'true'
+S3_BUCKET = os.environ.get('S3_BUCKET', '')
+S3_REGION = os.environ.get('S3_REGION', 'ap-northeast-2')
+S3_PREFIX = os.environ.get('S3_PREFIX', 'video')  # S3 내 비디오 폴더 경로
+
+s3_client = None
+if USE_S3:
+    try:
+        import boto3
+        s3_client = boto3.client(
+            's3',
+            region_name=S3_REGION,
+            aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
+        )
+        print(f"[S3] Connected to bucket: {S3_BUCKET}")
+    except Exception as e:
+        print(f"[S3] Failed to connect: {e}")
+        USE_S3 = False
+
+
+def get_s3_presigned_url(key, expiration=3600):
+    """S3 pre-signed URL 생성"""
+    if not s3_client or not S3_BUCKET:
+        return None
+    try:
+        url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': S3_BUCKET, 'Key': key},
+            ExpiresIn=expiration
+        )
+        return url
+    except Exception as e:
+        print(f"[S3] Failed to generate presigned URL: {e}")
+        return None
+
+
+def s3_file_exists(key):
+    """S3에 파일이 존재하는지 확인"""
+    if not s3_client or not S3_BUCKET:
+        return False
+    try:
+        s3_client.head_object(Bucket=S3_BUCKET, Key=key)
+        return True
+    except:
+        return False
 
 
 def get_base_dir():
@@ -106,10 +154,12 @@ def not_found(e):
 
 @app.route('/api/mask-sources', methods=['GET'])
 def get_mask_sources():
-    """masks 폴더 내 하위 폴더 목록 조회"""
+    """masks 폴더 내 하위 폴더 목록 조회 (S3 폴백 지원)"""
     masks_dir = os.path.join(VIDEO_DIR, 'masks')
     sources = []
+    local_source_names = set()
 
+    # 로컬 폴더 확인
     if os.path.exists(masks_dir):
         for name in sorted(os.listdir(masks_dir)):
             folder_path = os.path.join(masks_dir, name)
@@ -120,16 +170,42 @@ def get_mask_sources():
                     'name': name,
                     'count': mp4_count
                 })
+                local_source_names.add(name)
+
+    # S3 폴백: 로컬에 없는 mask source 추가
+    if USE_S3 and s3_client:
+        try:
+            paginator = s3_client.get_paginator('list_objects_v2')
+            prefix = f"{S3_PREFIX}/masks/"
+            s3_sources = set()
+
+            for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix, Delimiter='/'):
+                for cp in page.get('CommonPrefixes', []):
+                    # masks/source_name/ 에서 source_name 추출
+                    source_name = cp['Prefix'].replace(prefix, '').rstrip('/')
+                    if source_name and source_name not in local_source_names:
+                        s3_sources.add(source_name)
+
+            # S3에만 있는 source 추가 (파일 개수는 -1로 표시)
+            for name in sorted(s3_sources):
+                sources.append({
+                    'name': name,
+                    'count': -1,  # S3에서는 개수 조회가 비용이 많이 들어 -1로 표시
+                    's3': True
+                })
+        except Exception as e:
+            print(f"[S3] Failed to list mask sources: {e}")
 
     return jsonify({'sources': sources})
 
 
 @app.route('/api/videos', methods=['GET'])
 def get_videos():
-    """비디오 목록 조회 (video/source 폴더 스캔)"""
+    """비디오 목록 조회 (video/source 폴더 스캔, S3 폴백 지원)"""
     source_dir = os.path.join(VIDEO_DIR, 'source')
     mask_dir = os.path.join(VIDEO_DIR, 'mask')
     mask_source = request.args.get('mask_source', '')
+    local_video_names = set()
 
     # 평가 완료된 비디오 이름 수집 (mask_source에 해당하는 것만)
     evaluated_names = set()
@@ -174,6 +250,7 @@ def get_videos():
         for filename in sorted(os.listdir(source_dir)):
             if filename.endswith('.mp4'):
                 name = filename.replace('.mp4', '')
+                local_video_names.add(name)
 
                 # 마스크 파일 (소스와 동일한 이름)
                 mask_file = filename
@@ -184,6 +261,33 @@ def get_videos():
                     'mask': mask_file,
                     'evaluated': name in evaluated_names
                 })
+
+    # S3 폴백: 로컬에 없는 비디오 추가
+    if USE_S3 and s3_client:
+        try:
+            paginator = s3_client.get_paginator('list_objects_v2')
+            prefix = f"{S3_PREFIX}/source/"
+
+            for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix):
+                for obj in page.get('Contents', []):
+                    key = obj['Key']
+                    if key.endswith('.mp4'):
+                        filename = key.replace(prefix, '')
+                        # 경로에 / 가 없는 직접 파일만 (하위 폴더 제외)
+                        if '/' not in filename:
+                            name = filename.replace('.mp4', '')
+                            if name not in local_video_names:
+                                videos.append({
+                                    'name': name,
+                                    'source': filename,
+                                    'mask': filename,
+                                    'evaluated': name in evaluated_names,
+                                    's3': True
+                                })
+            # S3 비디오 포함 후 다시 정렬
+            videos.sort(key=lambda x: x['name'])
+        except Exception as e:
+            print(f"[S3] Failed to list videos: {e}")
 
     return jsonify({'videos': videos})
 
@@ -449,11 +553,18 @@ def get_evaluation(filename):
 
 @app.route('/video/source/<path:filename>')
 def serve_source_video(filename):
-    """소스 비디오 서빙 (30fps 아니면 자동 변환)"""
+    """소스 비디오 서빙 (30fps 아니면 자동 변환, S3 폴백 지원)"""
     source_dir = os.path.join(VIDEO_DIR, 'source')
     source_path = os.path.join(source_dir, filename)
 
     if not os.path.exists(source_path):
+        # S3 폴백 확인
+        if USE_S3:
+            s3_key = f"{S3_PREFIX}/source/{filename}"
+            if s3_file_exists(s3_key):
+                url = get_s3_presigned_url(s3_key)
+                if url:
+                    return redirect(url)
         return jsonify({'error': 'File not found'}), 404
 
     fps = get_video_fps(source_path)
@@ -504,11 +615,18 @@ def serve_source_video(filename):
 
 @app.route('/video/mask/<path:filename>')
 def serve_mask_video(filename):
-    """마스크 비디오 서빙 (H264 + 30fps 자동 변환)"""
+    """마스크 비디오 서빙 (H264 + 30fps 자동 변환, S3 폴백 지원)"""
     mask_dir = os.path.join(VIDEO_DIR, 'mask')
     original_path = os.path.join(mask_dir, filename)
 
     if not os.path.exists(original_path):
+        # S3 폴백 확인
+        if USE_S3:
+            s3_key = f"{S3_PREFIX}/mask/{filename}"
+            if s3_file_exists(s3_key):
+                url = get_s3_presigned_url(s3_key)
+                if url:
+                    return redirect(url)
         return jsonify({'error': 'File not found'}), 404
 
     codec = get_video_codec(original_path)
@@ -578,19 +696,26 @@ def serve_mask_video(filename):
 
 @app.route('/api/mosaic-check/<name>', methods=['GET'])
 def check_mosaic(name):
-    """모자이크 비디오 존재 여부 확인 (mask_source 파라미터 지원)"""
+    """모자이크 비디오 존재 여부 확인 (mask_source 파라미터 지원, S3 폴백)"""
     task = get_task_name(name)
     mask_source = request.args.get('mask_source', '')
 
     if mask_source:
         mosaic_path = os.path.join(VIDEO_DIR, 'mosaic', mask_source, task, f'{name}.mp4')
         video_path = f'/video/mosaic/{mask_source}/{task}/{name}.mp4'
+        s3_key = f"{S3_PREFIX}/mosaic/{mask_source}/{task}/{name}.mp4"
     else:
         mosaic_path = os.path.join(VIDEO_DIR, 'mosaic', task, f'{name}.mp4')
         video_path = f'/video/mosaic/{task}/{name}.mp4'
+        s3_key = f"{S3_PREFIX}/mosaic/{task}/{name}.mp4"
+
+    # 로컬 또는 S3에 존재하는지 확인
+    exists = os.path.exists(mosaic_path)
+    if not exists and USE_S3:
+        exists = s3_file_exists(s3_key)
 
     return jsonify({
-        'exists': os.path.exists(mosaic_path),
+        'exists': exists,
         'task': task,
         'mask_source': mask_source,
         'path': video_path
@@ -668,11 +793,18 @@ def generate_mosaic():
 
 @app.route('/video/mosaic/<task>/<filename>')
 def serve_mosaic_video(task, filename):
-    """모자이크 비디오 서빙"""
+    """모자이크 비디오 서빙 (S3 폴백 지원)"""
     mosaic_dir = os.path.join(VIDEO_DIR, 'mosaic', task)
     mosaic_path = os.path.join(mosaic_dir, filename)
 
     if not os.path.exists(mosaic_path):
+        # S3 폴백 확인
+        if USE_S3:
+            s3_key = f"{S3_PREFIX}/mosaic/{task}/{filename}"
+            if s3_file_exists(s3_key):
+                url = get_s3_presigned_url(s3_key)
+                if url:
+                    return redirect(url)
         return jsonify({'error': 'File not found'}), 404
 
     # 코덱 및 FPS 확인 후 필요 시 변환
@@ -728,11 +860,18 @@ def serve_mosaic_video(task, filename):
 
 @app.route('/video/mosaic/<mask_source>/<task>/<filename>')
 def serve_mosaic_video_with_source(mask_source, task, filename):
-    """모자이크 비디오 서빙 (masks 폴더의 특정 소스 사용)"""
+    """모자이크 비디오 서빙 (masks 폴더의 특정 소스 사용, S3 폴백 지원)"""
     mosaic_dir = os.path.join(VIDEO_DIR, 'mosaic', mask_source, task)
     mosaic_path = os.path.join(mosaic_dir, filename)
 
     if not os.path.exists(mosaic_path):
+        # S3 폴백 확인
+        if USE_S3:
+            s3_key = f"{S3_PREFIX}/mosaic/{mask_source}/{task}/{filename}"
+            if s3_file_exists(s3_key):
+                url = get_s3_presigned_url(s3_key)
+                if url:
+                    return redirect(url)
         return jsonify({'error': 'File not found'}), 404
 
     # 코덱 및 FPS 확인 후 필요 시 변환
@@ -782,7 +921,7 @@ def serve_mosaic_video_with_source(mask_source, task, filename):
 
 @app.route('/api/overlay-check/<name>', methods=['GET'])
 def check_overlay(name):
-    """오버레이 비디오 존재 여부 확인 (mask_source 파라미터 지원)"""
+    """오버레이 비디오 존재 여부 확인 (mask_source 파라미터 지원, S3 폴백)"""
     task = get_task_name(name)
     mask_source = request.args.get('mask_source', '')
 
@@ -790,13 +929,20 @@ def check_overlay(name):
         # masks 폴더의 특정 소스 사용
         overlay_path = os.path.join(VIDEO_DIR, 'overlay', mask_source, task, f'{name}.mp4')
         video_path = f'/video/overlay/{mask_source}/{task}/{name}.mp4'
+        s3_key = f"{S3_PREFIX}/overlay/{mask_source}/{task}/{name}.mp4"
     else:
         # 기존 mask 폴더 사용
         overlay_path = os.path.join(VIDEO_DIR, 'overlay', task, f'{name}.mp4')
         video_path = f'/video/overlay/{task}/{name}.mp4'
+        s3_key = f"{S3_PREFIX}/overlay/{task}/{name}.mp4"
+
+    # 로컬 또는 S3에 존재하는지 확인
+    exists = os.path.exists(overlay_path)
+    if not exists and USE_S3:
+        exists = s3_file_exists(s3_key)
 
     return jsonify({
-        'exists': os.path.exists(overlay_path),
+        'exists': exists,
         'task': task,
         'mask_source': mask_source,
         'path': video_path
@@ -875,11 +1021,18 @@ def generate_overlay():
 
 @app.route('/video/overlay/<task>/<filename>')
 def serve_overlay_video(task, filename):
-    """오버레이 비디오 서빙 (기존 mask 폴더 사용)"""
+    """오버레이 비디오 서빙 (기존 mask 폴더 사용, S3 폴백 지원)"""
     overlay_dir = os.path.join(VIDEO_DIR, 'overlay', task)
     overlay_path = os.path.join(overlay_dir, filename)
 
     if not os.path.exists(overlay_path):
+        # S3 폴백 확인
+        if USE_S3:
+            s3_key = f"{S3_PREFIX}/overlay/{task}/{filename}"
+            if s3_file_exists(s3_key):
+                url = get_s3_presigned_url(s3_key)
+                if url:
+                    return redirect(url)
         return jsonify({'error': 'File not found'}), 404
 
     return send_from_directory(overlay_dir, filename)
@@ -887,11 +1040,18 @@ def serve_overlay_video(task, filename):
 
 @app.route('/video/overlay/<mask_source>/<task>/<filename>')
 def serve_overlay_video_with_source(mask_source, task, filename):
-    """오버레이 비디오 서빙 (masks 폴더의 특정 소스 사용)"""
+    """오버레이 비디오 서빙 (masks 폴더의 특정 소스 사용, S3 폴백 지원)"""
     overlay_dir = os.path.join(VIDEO_DIR, 'overlay', mask_source, task)
     overlay_path = os.path.join(overlay_dir, filename)
 
     if not os.path.exists(overlay_path):
+        # S3 폴백 확인
+        if USE_S3:
+            s3_key = f"{S3_PREFIX}/overlay/{mask_source}/{task}/{filename}"
+            if s3_file_exists(s3_key):
+                url = get_s3_presigned_url(s3_key)
+                if url:
+                    return redirect(url)
         return jsonify({'error': 'File not found'}), 404
 
     return send_from_directory(overlay_dir, filename)
@@ -899,11 +1059,18 @@ def serve_overlay_video_with_source(mask_source, task, filename):
 
 @app.route('/video/masks/<source>/<path:filename>')
 def serve_masks_video(source, filename):
-    """masks 폴더 내 특정 소스의 비디오 서빙 (H264 + 30fps 자동 변환)"""
+    """masks 폴더 내 특정 소스의 비디오 서빙 (H264 + 30fps 자동 변환, S3 폴백 지원)"""
     masks_dir = os.path.join(VIDEO_DIR, 'masks', source)
     original_path = os.path.join(masks_dir, filename)
 
     if not os.path.exists(original_path):
+        # S3 폴백 확인
+        if USE_S3:
+            s3_key = f"{S3_PREFIX}/masks/{source}/{filename}"
+            if s3_file_exists(s3_key):
+                url = get_s3_presigned_url(s3_key)
+                if url:
+                    return redirect(url)
         return jsonify({'error': 'File not found'}), 404
 
     codec = get_video_codec(original_path)
@@ -980,10 +1147,26 @@ def open_browser():
 TARGET_FPS = 30
 
 
+@app.route('/api/storage-status', methods=['GET'])
+def get_storage_status():
+    """스토리지 상태 확인 (로컬/S3)"""
+    return jsonify({
+        'use_s3': USE_S3,
+        's3_bucket': S3_BUCKET if USE_S3 else None,
+        's3_region': S3_REGION if USE_S3 else None,
+        's3_prefix': S3_PREFIX if USE_S3 else None,
+        'video_dir': VIDEO_DIR,
+        'evaluations_dir': EVALUATIONS_DIR
+    })
+
+
 if __name__ == '__main__':
     print(f"Video directory: {VIDEO_DIR}")
     print(f"Evaluations directory: {EVALUATIONS_DIR}")
     print(f"Static files: {STATIC_DIR}")
+    print(f"S3 enabled: {USE_S3}")
+    if USE_S3:
+        print(f"S3 bucket: {S3_BUCKET}, region: {S3_REGION}, prefix: {S3_PREFIX}")
 
     # ffmpeg 자동 설치 확인
     ensure_ffmpeg()
