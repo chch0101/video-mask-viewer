@@ -5,7 +5,8 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build
+# Build to dist folder (override vite.config.js outDir)
+RUN npm run build -- --outDir dist
 
 # Stage 2: Python Backend
 FROM python:3.11-slim
