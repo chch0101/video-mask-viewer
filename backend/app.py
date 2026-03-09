@@ -12,8 +12,8 @@ import time
 from datetime import datetime
 from threading import Semaphore
 
-# 최대 동시 FFmpeg 변환 작업 수 제한 (OOM 방지)
-FFMPEG_SEMAPHORE = Semaphore(2)
+# 최대 동시 FFmpeg 변환 작업 수 제한 (OOM 방지: 가장 타이트하게 1개로 제한)
+FFMPEG_SEMAPHORE = Semaphore(1)
 
 from dotenv import load_dotenv
 from utils.system_helpers import show_dialog, show_progress_notification, ensure_ffmpeg
@@ -395,6 +395,7 @@ def prepare_video(name):
                 with FFMPEG_SEMAPHORE:
                     subprocess.run(
                         ['ffmpeg', '-y', '-i', source_path,
+                         '-threads', '1',
                          '-r', str(TARGET_FPS),
                          '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
                          '-c:a', 'copy', cached_source],
@@ -424,6 +425,7 @@ def prepare_video(name):
                     with FFMPEG_SEMAPHORE:
                         subprocess.run(
                             ['ffmpeg', '-y', '-i', mask_path,
+                             '-threads', '1',
                              '-r', str(TARGET_FPS),
                              '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
                              '-c:a', 'copy', cached_mask],
@@ -771,6 +773,7 @@ def serve_mask_video(filename):
             with FFMPEG_SEMAPHORE:
                 subprocess.run(
                     ['ffmpeg', '-y', '-i', original_path,
+                     '-threads', '1',
                      '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
                      '-c:a', 'copy', cached_path],
                     capture_output=True, check=True
@@ -935,13 +938,15 @@ def serve_mosaic_video(task, filename):
         with open(converting_marker, 'w') as f:
             f.write('converting')
 
-        subprocess.run(
-            ['ffmpeg', '-y', '-i', mosaic_path,
-             '-r', str(TARGET_FPS),
-             '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
-             '-c:a', 'copy', cached_path],
-            capture_output=True, check=True
-        )
+        with FFMPEG_SEMAPHORE:
+            subprocess.run(
+                ['ffmpeg', '-y', '-i', mosaic_path,
+                 '-threads', '1',
+                 '-r', str(TARGET_FPS),
+                 '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+                 '-c:a', 'copy', cached_path],
+                capture_output=True, check=True
+            )
         print(f"Mosaic {filename} 변환 완료")
 
         # 변환 완료 후 마커 파일 삭제
@@ -1000,13 +1005,15 @@ def serve_mosaic_video_with_source(mask_source, task, filename):
         with open(converting_marker, 'w') as f:
             f.write('converting')
 
-        subprocess.run(
-            ['ffmpeg', '-y', '-i', mosaic_path,
-             '-r', str(TARGET_FPS),
-             '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
-             '-c:a', 'copy', cached_path],
-            capture_output=True, check=True
-        )
+        with FFMPEG_SEMAPHORE:
+            subprocess.run(
+                ['ffmpeg', '-y', '-i', mosaic_path,
+                 '-threads', '1',
+                 '-r', str(TARGET_FPS),
+                 '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+                 '-c:a', 'copy', cached_path],
+                capture_output=True, check=True
+            )
         print(f"Mosaic {mask_source}/{filename} 변환 완료")
 
         if os.path.exists(converting_marker):
@@ -1228,6 +1235,7 @@ def serve_masks_video(source, filename):
             with FFMPEG_SEMAPHORE:
                 subprocess.run(
                     ['ffmpeg', '-y', '-i', original_path,
+                     '-threads', '1',
                      '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
                      '-c:a', 'copy', cached_path],
                     capture_output=True, check=True
