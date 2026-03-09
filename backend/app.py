@@ -10,6 +10,11 @@ import webbrowser
 import threading
 import time
 from datetime import datetime
+from threading import Semaphore
+
+# 최대 동시 FFmpeg 변환 작업 수 제한 (OOM 방지)
+FFMPEG_SEMAPHORE = Semaphore(2)
+
 from dotenv import load_dotenv
 from utils.system_helpers import show_dialog, show_progress_notification, ensure_ffmpeg
 from utils.video_processing import get_video_codec, get_video_fps, convert_to_h264, sync_mask_to_source
@@ -387,13 +392,14 @@ def prepare_video(name):
         if not os.path.exists(cached_source):
             print(f"[준비] Source {name}: {source_fps}fps → {TARGET_FPS}fps 변환 중...")
             try:
-                subprocess.run(
-                    ['ffmpeg', '-y', '-i', source_path,
-                     '-r', str(TARGET_FPS),
-                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
-                     '-c:a', 'copy', cached_source],
-                    capture_output=True, check=True
-                )
+                with FFMPEG_SEMAPHORE:
+                    subprocess.run(
+                        ['ffmpeg', '-y', '-i', source_path,
+                         '-r', str(TARGET_FPS),
+                         '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+                         '-c:a', 'copy', cached_source],
+                        capture_output=True, check=True
+                    )
                 converted.append('source')
                 print(f"[준비] Source {name} 변환 완료")
             except Exception as e:
@@ -415,13 +421,14 @@ def prepare_video(name):
                 if needs_fps: reasons.append(f'FPS({mask_fps}→{TARGET_FPS})')
                 print(f"[준비] Mask {name}: {', '.join(reasons)} 변환 중...")
                 try:
-                    subprocess.run(
-                        ['ffmpeg', '-y', '-i', mask_path,
-                         '-r', str(TARGET_FPS),
-                         '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
-                         '-c:a', 'copy', cached_mask],
-                        capture_output=True, check=True
-                    )
+                    with FFMPEG_SEMAPHORE:
+                        subprocess.run(
+                            ['ffmpeg', '-y', '-i', mask_path,
+                             '-r', str(TARGET_FPS),
+                             '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+                             '-c:a', 'copy', cached_mask],
+                            capture_output=True, check=True
+                        )
                     converted.append('mask')
                     print(f"[준비] Mask {name} 변환 완료")
                 except Exception as e:
@@ -761,12 +768,13 @@ def serve_mask_video(filename):
                 raise Exception("동기화 실패")
         else:
             print(f"[변환] Mask {filename}: 일반 ffmpeg 변환 수행")
-            subprocess.run(
-                ['ffmpeg', '-y', '-i', original_path,
-                 '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
-                 '-c:a', 'copy', cached_path],
-                capture_output=True, check=True
-            )
+            with FFMPEG_SEMAPHORE:
+                subprocess.run(
+                    ['ffmpeg', '-y', '-i', original_path,
+                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+                     '-c:a', 'copy', cached_path],
+                    capture_output=True, check=True
+                )
         
         print(f"[변환] Mask {filename} 변환 완료")
 
@@ -1095,7 +1103,8 @@ def generate_overlay():
         if mask_source:
             cmd.extend(['--mask-source', mask_source])
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        with FFMPEG_SEMAPHORE:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if result.returncode != 0:
             print(f"Overlay generation error: {result.stderr}")
             return jsonify({'error': f'Generation failed: {result.stderr[:200]}'}), 500
@@ -1216,12 +1225,13 @@ def serve_masks_video(source, filename):
                 raise Exception("동기화 실패")
         else:
             print(f"[변환] Masks {source}/{filename}: 일반 ffmpeg 변환 수행")
-            subprocess.run(
-                ['ffmpeg', '-y', '-i', original_path,
-                 '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
-                 '-c:a', 'copy', cached_path],
-                capture_output=True, check=True
-            )
+            with FFMPEG_SEMAPHORE:
+                subprocess.run(
+                    ['ffmpeg', '-y', '-i', original_path,
+                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+                     '-c:a', 'copy', cached_path],
+                    capture_output=True, check=True
+                )
 
         print(f"[변환] Masks {source}/{filename} 변환 완료")
 
