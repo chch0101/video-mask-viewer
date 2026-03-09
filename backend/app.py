@@ -50,10 +50,14 @@ if USE_S3:
         from botocore.client import Config
         s3_client = boto3.client(
             's3',
+            endpoint_url=f'https://s3.{S3_REGION}.amazonaws.com',
             region_name=S3_REGION,
             aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
             aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
-            config=Config(signature_version='s3v4')
+            config=Config(
+                signature_version='s3v4',
+                s3={'addressing_style': 'virtual'}
+            )
         )
         print(f"[S3] Connected to bucket: {S3_BUCKET} at {S3_REGION}")
     except Exception as e:
