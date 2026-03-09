@@ -846,7 +846,7 @@ def serve_source_video(filename):
 
 @app.route('/video/mask/<path:filename>')
 def serve_mask_video(filename):
-    """마스크 비디오 서빙 (H264 + 30fps 자동 변환, S3 폴백 지원)"""
+    """전체 mask 폴더 비디오 서빙 (호환성 유지용)"""
     mask_dir = os.path.join(VIDEO_DIR, 'mask')
     original_path = os.path.join(mask_dir, filename)
 
@@ -854,10 +854,13 @@ def serve_mask_video(filename):
         # S3: pre-signed URL로 즉시 redirect (다운로드 없이)
         if USE_S3:
             s3_key = f"{S3_PREFIX}/mask/{filename}"
-            url = get_s3_presigned_url(s3_key)
-            if url:
-                print(f"[S3 Redirect] mask/{filename}")
-                return redirect(url)
+            cache = get_s3_cache()
+            s3_exists = ('_s3_files_set' in cache and s3_key in cache['_s3_files_set']) or s3_file_exists(s3_key)
+            if s3_exists:
+                url = get_s3_presigned_url(s3_key)
+                if url:
+                    print(f"[S3 Redirect] mask/{filename}")
+                    return redirect(url)
         return jsonify({'error': 'File not found'}), 404
 
     # 로컬 파일: 코덱/FPS 변환 처리
@@ -1343,10 +1346,13 @@ def serve_masks_video(source, filename):
         # S3: pre-signed URL로 즉시 redirect (다운로드 없이)
         if USE_S3:
             s3_key = f"{S3_PREFIX}/masks/{source}/{filename}"
-            url = get_s3_presigned_url(s3_key)
-            if url:
-                print(f"[S3 Redirect] masks/{source}/{filename}")
-                return redirect(url)
+            cache = get_s3_cache()
+            s3_exists = ('_s3_files_set' in cache and s3_key in cache['_s3_files_set']) or s3_file_exists(s3_key)
+            if s3_exists:
+                url = get_s3_presigned_url(s3_key)
+                if url:
+                    print(f"[S3 Redirect] masks/{source}/{filename}")
+                    return redirect(url)
         return jsonify({'error': 'File not found'}), 404
 
     # 로컬 파일: 코덱/FPS 변환 처리
@@ -1451,9 +1457,12 @@ def get_video_urls(name):
             mask_local = os.path.join(VIDEO_DIR, 'mask', f'{name}.mp4')
 
         if not os.path.exists(mask_local):
-            url = get_s3_presigned_url(mask_key)
-            if url:
-                urls['mask'] = url
+            cache = get_s3_cache()
+            s3_exists = ('_s3_files_set' in cache and mask_key in cache['_s3_files_set']) or s3_file_exists(mask_key)
+            if s3_exists:
+                url = get_s3_presigned_url(mask_key)
+                if url:
+                    urls['mask'] = url
 
     return jsonify(urls)
 

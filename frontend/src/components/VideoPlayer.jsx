@@ -784,8 +784,8 @@ const VideoPlayer = forwardRef(function VideoPlayer({
 
       // 재생 시작 함수
       const startPlayback = () => {
-        sourceVideo.play()
-        maskVideo.play()
+        sourceVideo.play().catch(e => console.error("Source play error:", e))
+        maskVideo.play().catch(e => console.error("Mask play error:", e))
         startRenderLoop()
         setIsPlaying(true)
       }
