@@ -116,6 +116,8 @@ VIDEO_DIR = os.environ.get('VIDEO_DIR', os.path.join(BASE_DIR, 'video'))
 EVALUATIONS_DIR = os.environ.get('EVALUATIONS_DIR', os.path.join(BASE_DIR, 'evaluations'))
 CACHE_DIR = os.path.join(RESOURCE_DIR, 'cache')
 STATIC_DIR = os.path.join(RESOURCE_DIR, 'static')
+S3_CACHE_FILE = os.path.join(CACHE_DIR, 's3_cache.json')
+S3_CACHE_EXPIRY = 3600  # 1 hour
 
 # Flask 앱 생성 (정적 파일 서빙 설정)
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='')
@@ -149,6 +151,88 @@ def get_task_name(video_name):
     if len(parts) == 2 and parts[1].isdigit():
         return parts[0]
     return video_name
+
+
+def download_from_s3(s3_key, local_path):
+    """S3에서 영상을 로컬로 다운로드 (로컬 캐시)"""
+    if not USE_S3 or not s3_client: 
+        return False
+    try:
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        print(f"[S3 Download] Downloading {s3_key} to {local_path}...")
+        s3_client.download_file(S3_BUCKET, s3_key, local_path)
+        return os.path.exists(local_path)
+    except Exception as e:
+        print(f"[S3 Download] Failed to download {s3_key}: {e}")
+        return False
+
+
+def get_s3_cache():
+    """S3 버킷 메타데이터(소스/마스크 목록 등)를 로컬에 캐시하여 API 호출 비용 및 속도 개선"""
+    if not USE_S3 or not s3_client:
+        return {'sources': [], 'videos': []}
+    
+    # 캐시가 있고 유효한지 확인
+    if os.path.exists(S3_CACHE_FILE):
+        try:
+            with open(S3_CACHE_FILE, 'r', encoding='utf-8') as f:
+                cache_data = json.load(f)
+            
+            # 유효시간 내의 캐시면 반환
+            if time.time() - cache_data.get('timestamp', 0) < S3_CACHE_EXPIRY:
+                return cache_data
+        except Exception as e:
+            print(f"[S3 Cache] Error reading cache: {e}")
+    
+    # 캐시 갱신
+    print("[S3 Cache] Refreshing S3 metadata cache. This may take a moment for large buckets...")
+    cache_data = {
+        'timestamp': time.time(),
+        'sources': [],
+        'videos': []
+    }
+    
+    try:
+        paginator = s3_client.get_paginator('list_objects_v2')
+        
+        # 1. source 영상 캐시
+        prefix_source = f"{S3_PREFIX}/source/"
+        for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix_source):
+            for obj in page.get('Contents', []):
+                key = obj['Key']
+                if key.endswith('.mp4'):
+                    filename = key.replace(prefix_source, '')
+                    if '/' not in filename:  # 루트 바로 아래 파일만
+                        cache_data['videos'].append(filename)
+                        
+        # 2. mask sources 및 파일 개수 캐시
+        prefix_masks = f"{S3_PREFIX}/masks/"
+        source_counts = {}
+        for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix_masks):
+            for obj in page.get('Contents', []):
+                key = obj['Key']
+                if key.endswith('.mp4'):
+                    # 패턴: video/masks/source_name/filename.mp4
+                    parts = key.replace(prefix_masks, '').split('/')
+                    if len(parts) == 2:
+                        source_name = parts[0]
+                        source_counts[source_name] = source_counts.get(source_name, 0) + 1
+                        
+        for source_name, count in source_counts.items():
+            cache_data['sources'].append({
+                'name': source_name,
+                'count': count
+            })
+            
+        # 파일로 저장
+        with open(S3_CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cache_data, f)
+            
+        print("[S3 Cache] Cache refreshed successfully!")
+    except Exception as e:
+        print(f"[S3 Cache] Failed to refresh cache: {e}")
+        
+    return cache_data
 
 
 # ===== React 정적 파일 서빙 =====
@@ -187,29 +271,16 @@ def get_mask_sources():
                 })
                 local_source_names.add(name)
 
-    # S3 폴백: 로컬에 없는 mask source 추가
+    # S3 폴백: 로컬에 없는 mask source 추가 (캐시 사용)
     if USE_S3 and s3_client:
-        try:
-            paginator = s3_client.get_paginator('list_objects_v2')
-            prefix = f"{S3_PREFIX}/masks/"
-            s3_sources = set()
-
-            for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix, Delimiter='/'):
-                for cp in page.get('CommonPrefixes', []):
-                    # masks/source_name/ 에서 source_name 추출
-                    source_name = cp['Prefix'].replace(prefix, '').rstrip('/')
-                    if source_name and source_name not in local_source_names:
-                        s3_sources.add(source_name)
-
-            # S3에만 있는 source 추가 (파일 개수는 -1로 표시)
-            for name in sorted(s3_sources):
+        s3_cache = get_s3_cache()
+        for s3_source in s3_cache.get('sources', []):
+            if s3_source['name'] not in local_source_names:
                 sources.append({
-                    'name': name,
-                    'count': -1,  # S3에서는 개수 조회가 비용이 많이 들어 -1로 표시
+                    'name': s3_source['name'],
+                    'count': s3_source['count'],
                     's3': True
                 })
-        except Exception as e:
-            print(f"[S3] Failed to list mask sources: {e}")
 
     return jsonify({'sources': sources})
 
@@ -277,32 +348,21 @@ def get_videos():
                     'evaluated': name in evaluated_names
                 })
 
-    # S3 폴백: 로컬에 없는 비디오 추가
+    # S3 폴백: 로컬에 없는 비디오 추가 (캐시 사용)
     if USE_S3 and s3_client:
-        try:
-            paginator = s3_client.get_paginator('list_objects_v2')
-            prefix = f"{S3_PREFIX}/source/"
-
-            for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix):
-                for obj in page.get('Contents', []):
-                    key = obj['Key']
-                    if key.endswith('.mp4'):
-                        filename = key.replace(prefix, '')
-                        # 경로에 / 가 없는 직접 파일만 (하위 폴더 제외)
-                        if '/' not in filename:
-                            name = filename.replace('.mp4', '')
-                            if name not in local_video_names:
-                                videos.append({
-                                    'name': name,
-                                    'source': filename,
-                                    'mask': filename,
-                                    'evaluated': name in evaluated_names,
-                                    's3': True
-                                })
-            # S3 비디오 포함 후 다시 정렬
-            videos.sort(key=lambda x: x['name'])
-        except Exception as e:
-            print(f"[S3] Failed to list videos: {e}")
+        s3_cache = get_s3_cache()
+        for filename in s3_cache.get('videos', []):
+            name = filename.replace('.mp4', '')
+            if name not in local_video_names:
+                videos.append({
+                    'name': name,
+                    'source': filename,
+                    'mask': filename,
+                    'evaluated': name in evaluated_names,
+                    's3': True
+                })
+        # S3 비디오 포함 후 다시 정렬
+        videos.sort(key=lambda x: x['name'])
 
     return jsonify({'videos': videos})
 
@@ -587,10 +647,12 @@ def serve_source_video(filename):
         if USE_S3:
             s3_key = f"{S3_PREFIX}/source/{filename}"
             if s3_file_exists(s3_key):
-                url = get_s3_presigned_url(s3_key)
-                if url:
-                    return redirect(url)
-        return jsonify({'error': 'File not found'}), 404
+                if not download_from_s3(s3_key, source_path):
+                    url = get_s3_presigned_url(s3_key)
+                    if url:
+                        return redirect(url)
+        if not os.path.exists(source_path):
+            return jsonify({'error': 'File not found'}), 404
 
     fps = get_video_fps(source_path)
     if abs(fps - TARGET_FPS) > 0.5:
@@ -649,10 +711,12 @@ def serve_mask_video(filename):
         if USE_S3:
             s3_key = f"{S3_PREFIX}/mask/{filename}"
             if s3_file_exists(s3_key):
-                url = get_s3_presigned_url(s3_key)
-                if url:
-                    return redirect(url)
-        return jsonify({'error': 'File not found'}), 404
+                if not download_from_s3(s3_key, original_path):
+                    url = get_s3_presigned_url(s3_key)
+                    if url:
+                        return redirect(url)
+        if not os.path.exists(original_path):
+            return jsonify({'error': 'File not found'}), 404
 
     codec = get_video_codec(original_path)
     fps = get_video_fps(original_path)
@@ -827,10 +891,12 @@ def serve_mosaic_video(task, filename):
         if USE_S3:
             s3_key = f"{S3_PREFIX}/mosaic/{task}/{filename}"
             if s3_file_exists(s3_key):
-                url = get_s3_presigned_url(s3_key)
-                if url:
-                    return redirect(url)
-        return jsonify({'error': 'File not found'}), 404
+                if not download_from_s3(s3_key, mosaic_path):
+                    url = get_s3_presigned_url(s3_key)
+                    if url:
+                        return redirect(url)
+        if not os.path.exists(mosaic_path):
+            return jsonify({'error': 'File not found'}), 404
 
     # 코덱 및 FPS 확인 후 필요 시 변환
     codec = get_video_codec(mosaic_path)
@@ -894,10 +960,12 @@ def serve_mosaic_video_with_source(mask_source, task, filename):
         if USE_S3:
             s3_key = f"{S3_PREFIX}/mosaic/{mask_source}/{task}/{filename}"
             if s3_file_exists(s3_key):
-                url = get_s3_presigned_url(s3_key)
-                if url:
-                    return redirect(url)
-        return jsonify({'error': 'File not found'}), 404
+                if not download_from_s3(s3_key, mosaic_path):
+                    url = get_s3_presigned_url(s3_key)
+                    if url:
+                        return redirect(url)
+        if not os.path.exists(mosaic_path):
+            return jsonify({'error': 'File not found'}), 404
 
     # 코덱 및 FPS 확인 후 필요 시 변환
     codec = get_video_codec(mosaic_path)
@@ -1055,10 +1123,12 @@ def serve_overlay_video(task, filename):
         if USE_S3:
             s3_key = f"{S3_PREFIX}/overlay/{task}/{filename}"
             if s3_file_exists(s3_key):
-                url = get_s3_presigned_url(s3_key)
-                if url:
-                    return redirect(url)
-        return jsonify({'error': 'File not found'}), 404
+                if not download_from_s3(s3_key, overlay_path):
+                    url = get_s3_presigned_url(s3_key)
+                    if url:
+                        return redirect(url)
+        if not os.path.exists(overlay_path):
+            return jsonify({'error': 'File not found'}), 404
 
     return send_from_directory(overlay_dir, filename)
 
@@ -1074,10 +1144,12 @@ def serve_overlay_video_with_source(mask_source, task, filename):
         if USE_S3:
             s3_key = f"{S3_PREFIX}/overlay/{mask_source}/{task}/{filename}"
             if s3_file_exists(s3_key):
-                url = get_s3_presigned_url(s3_key)
-                if url:
-                    return redirect(url)
-        return jsonify({'error': 'File not found'}), 404
+                if not download_from_s3(s3_key, overlay_path):
+                    url = get_s3_presigned_url(s3_key)
+                    if url:
+                        return redirect(url)
+        if not os.path.exists(overlay_path):
+            return jsonify({'error': 'File not found'}), 404
 
     return send_from_directory(overlay_dir, filename)
 
@@ -1093,10 +1165,12 @@ def serve_masks_video(source, filename):
         if USE_S3:
             s3_key = f"{S3_PREFIX}/masks/{source}/{filename}"
             if s3_file_exists(s3_key):
-                url = get_s3_presigned_url(s3_key)
-                if url:
-                    return redirect(url)
-        return jsonify({'error': 'File not found'}), 404
+                if not download_from_s3(s3_key, original_path):
+                    url = get_s3_presigned_url(s3_key)
+                    if url:
+                        return redirect(url)
+        if not os.path.exists(original_path):
+            return jsonify({'error': 'File not found'}), 404
 
     codec = get_video_codec(original_path)
     fps = get_video_fps(original_path)
