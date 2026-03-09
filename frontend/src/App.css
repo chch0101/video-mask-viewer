@@ -1,0 +1,1017 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f5f5f5;
+  min-height: 100vh;
+}
+
+.app-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Control Panel */
+.control-panel {
+  width: 220px;
+  background: #fff;
+  border-right: 1px solid #e0e0e0;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.control-panel h2 {
+  font-size: 16px;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.control-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.control-section label {
+  font-size: 12px;
+  color: #666;
+}
+
+select {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  background: #fff;
+}
+
+/* Task Filter Buttons */
+.task-filter-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-filter-btn {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+  color: #666;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.task-filter-btn:hover {
+  background: #f0f0f0;
+  border-color: #bbb;
+}
+
+.task-filter-btn.active {
+  background: #1976d2;
+  color: white;
+  border-color: #1976d2;
+}
+
+.task-filter-btn.active:hover {
+  background: #1565c0;
+  border-color: #1565c0;
+}
+
+.nav-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.nav-buttons button {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.nav-buttons button:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+.nav-buttons button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.info-box {
+  background: #f9f9f9;
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #666;
+}
+
+.frame-controls {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.frame-controls button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.frame-controls button:hover {
+  background: #f0f0f0;
+}
+
+/* Mask Controls */
+.mask-controls {
+  background: #e8f4fd;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #b3d9f7;
+}
+
+.mask-controls h3 {
+  font-size: 14px;
+  color: #1976d2;
+  margin-bottom: 12px;
+}
+
+.mask-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.toggle-status {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.toggle-status.on {
+  background: #4caf50;
+  color: white;
+}
+
+.toggle-status.off {
+  background: #9e9e9e;
+  color: white;
+}
+
+.opacity-control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.opacity-control label {
+  font-size: 12px;
+  color: #666;
+  display: flex;
+  justify-content: space-between;
+}
+
+.opacity-slider {
+  width: 100%;
+  height: 6px;
+  -webkit-appearance: none;
+  background: #ddd;
+  border-radius: 3px;
+  outline: none;
+}
+
+.opacity-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  background: #1976d2;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.shortcut-hint {
+  font-size: 11px;
+  color: #888;
+  margin-top: 10px;
+  padding: 8px;
+  background: #fff;
+  border-radius: 4px;
+}
+
+.shortcut-hint kbd {
+  background: #eee;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: monospace;
+  border: 1px solid #ddd;
+}
+
+/* Main Content */
+.main-content {
+  flex: 1;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.video-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.video-header h1 {
+  font-size: 18px;
+  color: #333;
+}
+
+.video-header .badge {
+  padding: 4px 8px;
+  background: #e3f2fd;
+  color: #1976d2;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.video-container {
+  position: relative;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  max-width: 900px;
+  aspect-ratio: 16/9;
+}
+
+/* 비디오는 Canvas 렌더링 소스로만 사용 (화면에 표시하지 않음) */
+.video-container video {
+  display: none;
+}
+
+/* Canvas: 소스 + 마스크 합성 렌더링 */
+.video-container .composite-canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Source converting indicator */
+.source-converting {
+  position: absolute;
+  bottom: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: #2196f3;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 10;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Mask converting indicator */
+.mask-converting {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: #ffc107;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 10;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Debug indicator */
+.debug-info {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  z-index: 10;
+}
+
+.video-controls {
+  margin-top: 15px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  max-width: 900px;
+}
+
+.play-btn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: #1976d2;
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.play-btn:hover {
+  background: #1565c0;
+}
+
+.timeline {
+  flex: 1;
+  height: 6px;
+  -webkit-appearance: none;
+  background: #ddd;
+  border-radius: 3px;
+  outline: none;
+}
+
+.timeline::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #1976d2;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.time-display {
+  font-size: 12px;
+  color: #666;
+  min-width: 100px;
+  text-align: right;
+}
+
+/* Evaluation Panel */
+.evaluation-panel {
+  width: 400px;
+  background: #fff;
+  border-left: 1px solid #e0e0e0;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.evaluation-panel h2 {
+  font-size: 16px;
+  color: #333;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #1976d2;
+}
+
+.eval-section {
+  margin-bottom: 25px;
+}
+
+.eval-section h3 {
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.eval-item {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+  font-size: 12px;
+}
+
+.eval-question {
+  color: #333;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.eval-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.frame-indicator {
+  font-size: 11px;
+  color: #1976d2;
+  background: #e3f2fd;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.eval-btn {
+  flex: 1;
+  padding: 8px 16px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  background: #fff;
+  transition: all 0.2s;
+}
+
+.eval-btn:hover {
+  transform: scale(1.02);
+}
+
+.eval-btn.pass-btn:hover {
+  border-color: #4caf50;
+  background: #e8f5e9;
+}
+
+.eval-btn.fail-btn:hover {
+  border-color: #f44336;
+  background: #ffebee;
+}
+
+.eval-btn.pass-btn.selected {
+  background: #4caf50;
+  border-color: #4caf50;
+  color: white;
+}
+
+.eval-btn.fail-btn.selected {
+  background: #f44336;
+  border-color: #f44336;
+  color: white;
+}
+
+.save-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 2px solid #e0e0e0;
+}
+
+.save-btn {
+  width: 100%;
+  padding: 12px;
+  background: #1976d2;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #1565c0;
+}
+
+.save-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.progress-info {
+  text-align: center;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: #666;
+}
+
+/* 범위 질문 - 인라인 프레임 표시 */
+.frame-range-inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  background: #f5f5f5;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.frame-btn-inline {
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  color: #888;
+  min-width: 36px;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.frame-btn-inline:hover {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.frame-btn-inline.recorded {
+  background: #e3f2fd;
+  border-color: #1976d2;
+  color: #1976d2;
+  font-weight: 600;
+}
+
+.range-separator {
+  color: #bbb;
+  font-size: 12px;
+}
+
+/* 평가 기록 */
+.evaluation-history {
+  margin-top: 20px;
+  padding: 12px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  max-width: 900px;
+}
+
+.evaluation-history h4 {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.evaluation-history ul {
+  list-style: none;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.evaluation-history li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.evaluation-history li {
+  cursor: pointer;
+}
+
+.evaluation-history li:hover {
+  background: #eee;
+}
+
+.evaluation-history li.selected {
+  background: #e3f2fd;
+  border-left: 3px solid #1976d2;
+}
+
+.history-filename {
+  color: #333;
+  font-family: monospace;
+}
+
+.history-date {
+  color: #888;
+  font-size: 11px;
+}
+
+/* 평가 상세 내용 */
+.evaluation-details {
+  margin-top: 12px;
+  border-top: 1px solid #ddd;
+  padding-top: 12px;
+  overflow-x: auto;
+}
+
+.evaluation-details table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.evaluation-details th,
+.evaluation-details td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.evaluation-details th {
+  background: #f5f5f5;
+  font-weight: 600;
+  color: #666;
+  white-space: nowrap;
+}
+
+.evaluation-details td.pass {
+  color: #4caf50;
+  font-weight: 600;
+}
+
+.evaluation-details td.fail {
+  color: #f44336;
+  font-weight: 600;
+}
+
+.evaluation-details .question-cell {
+  max-width: 400px;
+  line-height: 1.4;
+  color: #555;
+}
+
+/* 재생 속도 컨트롤 */
+.speed-controls {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  max-width: 900px;
+}
+
+.speed-btn {
+  padding: 4px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.speed-btn:hover {
+  background: #f0f0f0;
+}
+
+.speed-btn.active {
+  background: #1976d2;
+  color: white;
+  border-color: #1976d2;
+}
+
+/* 프로그레스 바 */
+.progress-bar-container {
+  width: 100%;
+  height: 6px;
+  background: #e0e0e0;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4caf50, #66bb6a);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* 평가 불러오기 버튼 */
+.eval-detail-actions {
+  margin-bottom: 10px;
+}
+
+.load-eval-btn {
+  padding: 6px 14px;
+  border: 1px solid #1976d2;
+  border-radius: 4px;
+  background: #e3f2fd;
+  color: #1976d2;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.load-eval-btn:hover {
+  background: #1976d2;
+  color: white;
+}
+
+/* 프레임 링크 */
+.evaluation-details td.frame-link {
+  color: #1976d2;
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.evaluation-details td.frame-link:hover {
+  color: #0d47a1;
+}
+
+/* 단축키 안내 */
+.shortcut-hint {
+  font-size: 11px;
+  color: #888;
+  padding: 10px;
+  background: #f9f9f9;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shortcut-hint kbd {
+  background: #eee;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: monospace;
+  border: 1px solid #ddd;
+  font-size: 10px;
+}
+
+/* 오버레이 토글 버튼 */
+.overlay-toggle-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 2px solid #1565c0;
+  border-radius: 6px;
+  background: #e3f2fd;
+  color: #1565c0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.overlay-toggle-btn:hover:not(:disabled) {
+  background: #1976d2;
+  color: white;
+}
+
+.overlay-toggle-btn.active {
+  background: #1976d2;
+  color: white;
+  border-color: #1565c0;
+}
+
+.overlay-toggle-btn.active:hover:not(:disabled) {
+  background: #1565c0;
+}
+
+.overlay-toggle-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* 모자이크 토글 버튼 */
+.mosaic-toggle-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 2px solid #43a047;
+  border-radius: 6px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mosaic-toggle-btn:hover:not(:disabled) {
+  background: #43a047;
+  color: white;
+}
+
+.mosaic-toggle-btn.active {
+  background: #43a047;
+  color: white;
+  border-color: #2e7d32;
+}
+
+.mosaic-toggle-btn.active:hover:not(:disabled) {
+  background: #388e3c;
+}
+
+.mosaic-toggle-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* 모자이크 뱃지 */
+.badge-mosaic {
+  background: #e8f5e9 !important;
+  color: #2e7d32 !important;
+}
+
+/* 오버레이 뱃지 */
+.badge-overlay {
+  background: #e3f2fd !important;
+  color: #1565c0 !important;
+}
+
+/* 프레임 범위 컨테이너 */
+.frame-ranges-container {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.frame-range-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+.frame-input {
+  width: 60px;
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.frame-input:focus {
+  outline: none;
+  border-color: #1976d2;
+}
+
+.frame-action-btn {
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.frame-action-btn:hover {
+  background: #e0e0e0;
+}
+
+.frame-action-btn.set-start-btn {
+  color: #4caf50;
+  border-color: #4caf50;
+}
+
+.frame-action-btn.set-start-btn:hover {
+  background: #4caf50;
+  color: white;
+}
+
+.frame-action-btn.set-end-btn {
+  color: #2196f3;
+  border-color: #2196f3;
+}
+
+.frame-action-btn.set-end-btn:hover {
+  background: #2196f3;
+  color: white;
+}
+
+.frame-action-btn.remove-btn {
+  color: #f44336;
+  border-color: #f44336;
+}
+
+.frame-action-btn.remove-btn:hover {
+  background: #f44336;
+  color: white;
+}
+
+.add-range-btn {
+  padding: 6px 12px;
+  border: 1px dashed #1976d2;
+  border-radius: 4px;
+  background: #e3f2fd;
+  color: #1976d2;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.add-range-btn:hover {
+  background: #1976d2;
+  color: white;
+  border-style: solid;
+}
+
+/* 프레임 범위 뱃지 (상세 내역 테이블 내) */
+.frame-ranges-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.frame-range-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  background: #e3f2fd;
+  color: #1976d2;
+  border: 1px solid #1976d2;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.frame-range-badge:hover {
+  background: #1976d2;
+  color: white;
+}
+
+/* 로딩 스피너 */
+.loading-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ddd;
+  border-top-color: #1976d2;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.loading-spinner.small {
+  width: 12px;
+  height: 12px;
+  border-width: 1.5px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Mask Source 로딩 상태 */
+.mask-source-select.loading {
+  opacity: 0.6;
+  background: #f5f5f5;
+}
+
+.loading-indicator {
+  color: #1976d2;
+  font-weight: 500;
+}
+
+/* 변환 중 인디케이터 개선 */
+.source-converting,
+.mask-converting {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.source-converting::before,
+.mask-converting::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.source-converting::before {
+  border-color: rgba(33, 150, 243, 0.3);
+  border-top-color: #2196f3;
+}
+
+.mask-converting::before {
+  border-color: rgba(255, 193, 7, 0.3);
+  border-top-color: #ffc107;
+}
