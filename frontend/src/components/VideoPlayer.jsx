@@ -876,6 +876,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
         <video
           ref={sourceVideoRef}
           src={currentVideo ? `/video/source/${currentVideo.source}` : ''}
+          crossOrigin="anonymous"
           muted
           playsInline
           preload="auto"
@@ -883,6 +884,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
         <video
           ref={maskVideoRef}
           src={currentVideo && selectedMaskSource ? `/video/masks/${selectedMaskSource}/${currentVideo.mask}` : ''}
+          crossOrigin="anonymous"
           muted
           playsInline
           preload="auto"
@@ -895,6 +897,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
               ? `/video/mosaic/${selectedMaskSource}/${currentVideo.name.replace(/_\d+$/, '')}/${currentVideo.name}.mp4`
               : `/video/mosaic/${currentVideo.name.replace(/_\d+$/, '')}/${currentVideo.name}.mp4`
             }
+            crossOrigin="anonymous"
             muted
             playsInline
             preload="auto"
@@ -948,6 +951,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
               ? `/video/overlay/${selectedMaskSource}/${currentVideo.name.replace(/_\d+$/, '')}/${currentVideo.name}.mp4`
               : `/video/overlay/${currentVideo.name.replace(/_\d+$/, '')}/${currentVideo.name}.mp4`
             }
+            crossOrigin="anonymous"
             muted
             playsInline
             preload="auto"
