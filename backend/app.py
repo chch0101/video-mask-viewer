@@ -88,6 +88,11 @@ def get_s3_presigned_url(key, expiration=3600):
             Params={'Bucket': S3_BUCKET, 'Key': key},
             ExpiresIn=expiration
         )
+        # Force regional endpoint to avoid 307 redirect (which breaks CORS)
+        url = url.replace(
+            f'{S3_BUCKET}.s3.amazonaws.com',
+            f'{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com'
+        )
         return url
     except Exception as e:
         print(f"[S3] Failed to generate presigned URL: {e}")
