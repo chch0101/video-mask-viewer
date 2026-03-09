@@ -46,11 +46,11 @@ for brew_bin in ['/opt/homebrew/bin', '/usr/local/bin']:
     if brew_bin not in os.environ.get('PATH', ''):
         os.environ['PATH'] = brew_bin + ':' + os.environ.get('PATH', '')
 
-# 경로 설정
+# 경로 설정 (환경 변수로 오버라이드 가능)
 BASE_DIR = get_base_dir()
 RESOURCE_DIR = get_resource_dir()
-VIDEO_DIR = os.path.join(BASE_DIR, 'video')
-EVALUATIONS_DIR = os.path.join(BASE_DIR, 'evaluations')
+VIDEO_DIR = os.environ.get('VIDEO_DIR', os.path.join(BASE_DIR, 'video'))
+EVALUATIONS_DIR = os.environ.get('EVALUATIONS_DIR', os.path.join(BASE_DIR, 'evaluations'))
 CACHE_DIR = os.path.join(RESOURCE_DIR, 'cache')
 STATIC_DIR = os.path.join(RESOURCE_DIR, 'static')
 

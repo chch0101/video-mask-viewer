@@ -32,12 +32,14 @@ COPY --from=frontend-builder /app/frontend/dist ./backend/static
 # Copy other necessary files
 COPY mosaic.py overlay.py ./
 
-# Create directories
-RUN mkdir -p video/source video/mask video/masks video/mosaic video/overlay evaluations backend/cache
+# Create directories (video will be mounted as Railway Volume)
+RUN mkdir -p /app/video/source /app/video/mask /app/video/masks /app/video/mosaic /app/video/overlay /app/evaluations /app/backend/cache
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PORT=5004
+ENV VIDEO_DIR=/app/video
+ENV EVALUATIONS_DIR=/app/evaluations
 
 WORKDIR /app/backend
 
