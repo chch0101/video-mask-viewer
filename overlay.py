@@ -69,76 +69,45 @@ def apply_overlay(source_frame, mask_frame, opacity=0.5):
     return result.astype(np.uint8)
 
 
-def load_all_frames(video_path: str, width: int, height: int) -> list:
-    """비디오의 모든 프레임을 메모리에 로드"""
-    frame_size = width * height * 3
-    frames = []
-
-    cmd = [
-        'ffmpeg', '-v', 'error', '-i', video_path,
-        '-f', 'rawvideo', '-pix_fmt', 'bgr24', 'pipe:1'
-    ]
-
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=10**8)
-
-    while True:
-        data = proc.stdout.read(frame_size)
-        if not data or len(data) < frame_size:
-            break
-        frame = np.frombuffer(data, dtype=np.uint8).reshape((height, width, 3))
-        frames.append(frame.copy())
-
-    proc.terminate()
-    return frames
-
-
 def process_video_overlay(source_path: str, mask_path: str, output_path: str, opacity: float = 0.5):
     """
     원본 영상과 마스크 영상을 합쳐서 오버레이 영상 생성
-    프레임 인덱스 매핑으로 정확한 동기화 보장
+    프레임 인덱스 매핑으로 정확한 동기화 보장 (메모리 절약을 위해 스트리밍 방식 적용)
     """
     start_time = time.time()
 
-    # 비디오 정보 추출
-    source_info = get_video_info(source_path)
-    mask_info = get_video_info(mask_path)
+    source_cap = cv2.VideoCapture(source_path)
+    mask_cap = cv2.VideoCapture(mask_path)
 
-    if not source_info:
+    if not source_cap.isOpened():
         print(f"원본 영상을 열 수 없습니다: {source_path}")
         return False
-    if not mask_info:
+
+    if not mask_cap.isOpened():
         print(f"마스크 영상을 열 수 없습니다: {mask_path}")
+        source_cap.release()
         return False
 
-    width, height = source_info['width'], source_info['height']
-    source_frame_count = source_info['frame_count']
-    mask_frame_count = mask_info['frame_count']
+    width = int(source_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(source_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    original_fps = source_cap.get(cv2.CAP_PROP_FPS)
+    source_frame_count = int(source_cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    mask_frame_count = int(mask_cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    if source_frame_count == 0 or mask_frame_count == 0:
+        print("비디오 프레임 수가 0입니다.")
+        source_cap.release()
+        mask_cap.release()
+        return False
+
+    source_duration = source_frame_count / original_fps if original_fps > 0 else 0
+    mask_duration = mask_frame_count / mask_cap.get(cv2.CAP_PROP_FPS) if mask_cap.get(cv2.CAP_PROP_FPS) > 0 else 0
 
     print(f"처리 중: {os.path.basename(source_path)}")
     print(f"  - 해상도: {width}x{height}")
-    print(f"  - Source: {source_frame_count} frames ({source_info['duration']:.2f}s)")
-    print(f"  - Mask: {mask_frame_count} frames ({mask_info['duration']:.2f}s)")
+    print(f"  - Source: {source_frame_count} frames ({source_duration:.2f}s)")
+    print(f"  - Mask: {mask_frame_count} frames ({mask_duration:.2f}s)")
     print(f"  - Frame ratio: {mask_frame_count/source_frame_count:.4f}")
-
-    # 마스크 영상의 모든 프레임을 미리 로드
-    print(f"  - 마스크 프레임 로딩 중...")
-    mask_frames = load_all_frames(mask_path, width, height)
-    actual_mask_count = len(mask_frames)
-    print(f"  - 마스크 프레임 로드 완료: {actual_mask_count} frames")
-
-    if actual_mask_count == 0:
-        print(f"마스크 프레임을 읽을 수 없습니다.")
-        return False
-
-    frame_size = width * height * 3
-
-    # 소스 영상 읽기
-    source_cmd = [
-        'ffmpeg', '-v', 'error', '-i', source_path,
-        '-f', 'rawvideo', '-pix_fmt', 'bgr24', 'pipe:1'
-    ]
-
-    source_proc = subprocess.Popen(source_cmd, stdout=subprocess.PIPE, bufsize=10**8)
 
     # 출력 폴더 생성
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -171,25 +140,31 @@ def process_video_overlay(source_path: str, mask_path: str, output_path: str, op
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     source_idx = 0
+    current_mask_idx = -1
+    last_mask_frame = None
 
     while True:
-        s_data = source_proc.stdout.read(frame_size)
-
-        if not s_data or len(s_data) < frame_size:
+        ret_source, source_frame = source_cap.read()
+        if not ret_source:
             break
 
-        source_frame = np.frombuffer(s_data, dtype=np.uint8).reshape((height, width, 3))
+        # 인덱스 기반 매핑 (비율로 맞춰 타겟 프레임 계산)
+        target_mask_idx = int(source_idx * (mask_frame_count / source_frame_count))
+        # 범위 초과 방지
+        target_mask_idx = min(target_mask_idx, mask_frame_count - 1)
 
-        # 프레임 인덱스 매핑: source 프레임에 대응하는 mask 프레임 계산
-        mask_idx = int(source_idx * actual_mask_count / source_frame_count)
-        mask_idx = min(mask_idx, actual_mask_count - 1)  # 범위 초과 방지
-
-        mask_frame = mask_frames[mask_idx]
+        # target_mask_idx에 도달할 때까지 실시간으로 마스크 영상을 전진시킴 (메모리 로드 X)
+        while current_mask_idx < target_mask_idx:
+            ret_mask, mask_frame = mask_cap.read()
+            if not ret_mask:
+                break
+            last_mask_frame = mask_frame
+            current_mask_idx += 1
 
         # 오버레이 적용
-        result_frame = apply_overlay(source_frame, mask_frame, opacity)
+        result_frame = apply_overlay(source_frame, last_mask_frame, opacity)
 
-        # 출력
+        # 출력 시뮬레이터에 바로 전송
         ffmpeg_proc.stdin.write(result_frame.tobytes())
         source_idx += 1
 
@@ -199,10 +174,8 @@ def process_video_overlay(source_path: str, mask_path: str, output_path: str, op
 
     ffmpeg_proc.stdin.close()
     ffmpeg_proc.wait()
-    source_proc.terminate()
-
-    # 메모리 해제
-    del mask_frames
+    source_cap.release()
+    mask_cap.release()
 
     elapsed_time = time.time() - start_time
     processing_fps = source_idx / elapsed_time if elapsed_time > 0 else 0
