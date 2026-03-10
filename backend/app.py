@@ -996,9 +996,28 @@ def generate_mosaic():
     # source와 mask 파일 존재 확인
     source_path = os.path.join(VIDEO_DIR, 'source', f'{video_name}.mp4')
 
-    if not os.path.exists(source_path):
+    source_exists = os.path.exists(source_path)
+    mask_exists = os.path.exists(mask_path)
+    source_url = None
+    mask_url = None
+
+    if not source_exists and USE_S3:
+        cache = get_s3_cache()
+        s3_source_key = f"{S3_PREFIX}/source/{video_name}.mp4"
+        if ('_s3_files_set' in cache and s3_source_key in cache['_s3_files_set']) or s3_file_exists(s3_source_key):
+            source_exists = True
+            source_url = get_s3_presigned_url(s3_source_key)
+
+    if not mask_exists and USE_S3:
+        cache = get_s3_cache()
+        s3_mask_key = f"{S3_PREFIX}/masks/{mask_source}/{video_name}.mp4" if mask_source else f"{S3_PREFIX}/mask/{video_name}.mp4"
+        if ('_s3_files_set' in cache and s3_mask_key in cache['_s3_files_set']) or s3_file_exists(s3_mask_key):
+            mask_exists = True
+            mask_url = get_s3_presigned_url(s3_mask_key)
+
+    if not source_exists:
         return jsonify({'error': f'Source video not found: {video_name}.mp4'}), 404
-    if not os.path.exists(mask_path):
+    if not mask_exists:
         return jsonify({'error': f'Mask video not found: {video_name}.mp4 (source: {mask_source or "default"})'}), 404
 
     # mosaic.py 실행 (루루트 venv의 Python 사용 - cv2가 설치된 환경)
@@ -1012,6 +1031,10 @@ def generate_mosaic():
             cmd = [mosaic_python, mosaic_script, '--task', task, '--number', number]
             if mask_source:
                 cmd.extend(['--mask-source', mask_source])
+            if source_url:
+                cmd.extend(['--source-url', source_url])
+            if mask_url:
+                cmd.extend(['--mask-url', mask_url])
 
             # PYTHONPATH 설정하여 utils 모듈을 찾을 수 있게 함
             env = os.environ.copy()
@@ -1247,9 +1270,28 @@ def generate_overlay():
     # source와 mask 파일 존재 확인
     source_path = os.path.join(VIDEO_DIR, 'source', f'{video_name}.mp4')
 
-    if not os.path.exists(source_path):
+    source_exists = os.path.exists(source_path)
+    mask_exists = os.path.exists(mask_path)
+    source_url = None
+    mask_url = None
+
+    if not source_exists and USE_S3:
+        cache = get_s3_cache()
+        s3_source_key = f"{S3_PREFIX}/source/{video_name}.mp4"
+        if ('_s3_files_set' in cache and s3_source_key in cache['_s3_files_set']) or s3_file_exists(s3_source_key):
+            source_exists = True
+            source_url = get_s3_presigned_url(s3_source_key)
+
+    if not mask_exists and USE_S3:
+        cache = get_s3_cache()
+        s3_mask_key = f"{S3_PREFIX}/masks/{mask_source}/{video_name}.mp4" if mask_source else f"{S3_PREFIX}/mask/{video_name}.mp4"
+        if ('_s3_files_set' in cache and s3_mask_key in cache['_s3_files_set']) or s3_file_exists(s3_mask_key):
+            mask_exists = True
+            mask_url = get_s3_presigned_url(s3_mask_key)
+
+    if not source_exists:
         return jsonify({'error': f'Source video not found: {video_name}.mp4'}), 404
-    if not os.path.exists(mask_path):
+    if not mask_exists:
         return jsonify({'error': f'Mask video not found: {video_name}.mp4 (source: {mask_source or "default"})'}), 404
 
     # overlay.py 실행
@@ -1263,6 +1305,10 @@ def generate_overlay():
             cmd = [overlay_python, overlay_script, '--task', task, '--number', number, '--opacity', str(opacity)]
             if mask_source:
                 cmd.extend(['--mask-source', mask_source])
+            if source_url:
+                cmd.extend(['--source-url', source_url])
+            if mask_url:
+                cmd.extend(['--mask-url', mask_url])
 
             # PYTHONPATH 설정하여 utils 모듈을 찾을 수 있게 함
             env = os.environ.copy()

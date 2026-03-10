@@ -272,7 +272,7 @@ def process_all_videos():
     print(f"\n완료: {success}/{len(tasks)} ({time.time() - start_time:.1f}초)")
 
 
-def process_single_video(task, number, opacity=0.5, mask_source=None):
+def process_single_video(task, number, opacity=0.5, mask_source=None, source_url=None, mask_url=None):
     """단일 비디오 처리 (명령줄 호출용)"""
     video_name = f"{task}_{number}"
     source_path = SOURCE_DIR / f"{video_name}.mp4"
@@ -285,15 +285,18 @@ def process_single_video(task, number, opacity=0.5, mask_source=None):
         mask_path = MASK_DIR / f"{video_name}.mp4"
         output_path = OUTPUT_DIR / task / f"{video_name}.mp4"
 
-    if not source_path.exists():
+    actual_source = source_url if source_url else str(source_path)
+    actual_mask = mask_url if mask_url else str(mask_path)
+
+    if not source_url and not source_path.exists():
         print(f"원본 영상을 찾을 수 없습니다: {source_path}")
         return False
-    if not mask_path.exists():
+    if not mask_url and not mask_path.exists():
         print(f"마스크 영상을 찾을 수 없습니다: {mask_path}")
         return False
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    return process_video_overlay(str(source_path), str(mask_path), str(output_path), opacity)
+    return process_video_overlay(actual_source, actual_mask, str(output_path), opacity)
 
 
 if __name__ == "__main__":
@@ -304,12 +307,14 @@ if __name__ == "__main__":
     parser.add_argument('--number', type=str, help='비디오 번호 (예: 0001)')
     parser.add_argument('--opacity', type=float, default=0.5, help='오버레이 투명도 (0-1)')
     parser.add_argument('--mask-source', type=str, default=None, help='masks 폴더 내 소스 이름 (예: sam3)')
+    parser.add_argument('--source-url', type=str, default=None, help='S3 Presigned URL for source video')
+    parser.add_argument('--mask-url', type=str, default=None, help='S3 Presigned URL for mask video')
 
     args = parser.parse_args()
 
     if args.task and args.number:
         # 단일 비디오 처리
-        success = process_single_video(args.task, args.number, args.opacity, args.mask_source)
+        success = process_single_video(args.task, args.number, args.opacity, args.mask_source, args.source_url, args.mask_url)
         exit(0 if success else 1)
     else:
         # 모든 비디오 처리

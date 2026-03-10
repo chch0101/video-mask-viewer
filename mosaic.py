@@ -283,7 +283,8 @@ def process_video(source_path: str, mask_path: str, output_path: str,
 
 def process_single_video(task: str, number: str, block_size: int = 15,
                          num_workers: int = DEFAULT_WORKERS, batch_size: int = DEFAULT_BATCH,
-                         use_contour: bool = True, mask_source: str = None):
+                         use_contour: bool = True, mask_source: str = None,
+                         source_url: str = None, mask_url: str = None):
     """단일 비디오 처리"""
     video_name = f"{task}_{number}"
     source_path = SOURCE_DIR / f"{video_name}.mp4"
@@ -296,16 +297,19 @@ def process_single_video(task: str, number: str, block_size: int = 15,
         mask_path = MASK_DIR / f"{video_name}.mp4"
         output_path = OUTPUT_DIR / task / f"{video_name}.mp4"
 
-    if not source_path.exists():
+    actual_source = source_url if source_url else str(source_path)
+    actual_mask = mask_url if mask_url else str(mask_path)
+
+    if not source_url and not source_path.exists():
         print(f"원본 영상을 찾을 수 없습니다: {source_path}")
         return False
 
-    if not mask_path.exists():
+    if not mask_url and not mask_path.exists():
         print(f"마스크 영상을 찾을 수 없습니다: {mask_path}")
         return False
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    return process_video(str(source_path), str(mask_path), str(output_path),
+    return process_video(actual_source, actual_mask, str(output_path),
                          block_size, use_contour=use_contour,
                          num_workers=num_workers, batch_size=batch_size)
 
@@ -371,6 +375,10 @@ if __name__ == "__main__":
                         help="동시 처리 영상 수 (기본값: 1, 2-3 권장)")
     parser.add_argument("--mask-source", type=str, default=None,
                         help="masks 폴더 내 소스 이름 (예: sam3, rexomni)")
+    parser.add_argument("--source-url", type=str, default=None,
+                        help="S3 Presigned URL for source video")
+    parser.add_argument("--mask-url", type=str, default=None,
+                        help="S3 Presigned URL for mask video")
 
     args = parser.parse_args()
     use_contour = not args.fast
@@ -378,7 +386,8 @@ if __name__ == "__main__":
     if args.task and args.number:
         # 단일 비디오 처리
         success = process_single_video(args.task, args.number, args.block, args.workers,
-                                       args.batch, use_contour, args.mask_source)
+                                       args.batch, use_contour, args.mask_source,
+                                       args.source_url, args.mask_url)
         exit(0 if success else 1)
     elif args.all or args.task:
         # 모든 비디오 또는 특정 task의 모든 비디오 처리

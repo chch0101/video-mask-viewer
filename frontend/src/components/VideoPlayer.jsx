@@ -658,30 +658,38 @@ const VideoPlayer = forwardRef(function VideoPlayer({
             const diff = mask.currentTime - maskTargetTime
             const absDiff = Math.abs(diff)
             const frameDuration = 1 / maskFpsRef.current
+
+            // 재생 속도가 빠를수록 오차 허용 범위를 넓혀줌 (1배속 기준 프레임)
+            const speedFactor = Math.max(1, playbackRateRef.current)
+            const threshold = frameDuration * speedFactor
+
             // mask의 기본 재생 속도는 source 속도 * 비율
             const maskBaseRate = playbackRateRef.current * durationRatioRef.current
 
             // 큰 차이(3프레임 이상)는 seek로 해결 (하지만 너무 자주 하지 않음)
             const timeSinceLastSeek = now - lastSyncSeekRef.current
-            if (absDiff > (3 * frameDuration) && timeSinceLastSeek > 1000) {
+            if (absDiff > (3 * threshold) && timeSinceLastSeek > 1000) {
               mask.currentTime = maskTargetTime
               lastSyncSeekRef.current = now
-              // seek 후에는 기본 속도로 복원
               mask.playbackRate = maskBaseRate
             }
-            // 작은 차이(0.5~3프레임)는 playbackRate로 부드럽게 조정
-            else if (absDiff > (0.5 * frameDuration) && absDiff <= (3 * frameDuration)) {
+            // 중간 차이(1~3프레임)는 playbackRate로 부드럽게 조정
+            else if (absDiff > (1.0 * threshold) && absDiff <= (3 * threshold)) {
+              // 브라우저 렌더링에 혼란을 주지 않도록 가속 허용치 조절
               if (diff > 0) {
                 // mask가 앞서가면 느리게
-                mask.playbackRate = maskBaseRate * 0.98
+                mask.playbackRate = maskBaseRate * 0.95
               } else {
                 // mask가 뒤처지면 빠르게
-                mask.playbackRate = maskBaseRate * 1.02
+                mask.playbackRate = maskBaseRate * 1.05
               }
             }
-            // 차이가 거의 없으면 원래 속도로
-            else if (absDiff <= (0.5 * frameDuration)) {
-              mask.playbackRate = maskBaseRate
+            // 차이가 거의 없으면 원래 속도로 (0.5프레임 이내로는 개입하지 않음)
+            else if (absDiff <= (1.0 * threshold)) {
+              // 불필요한 속도 변경 호출을 막기 위해 현재 속도와 다를 때만 업데이트
+              if (Math.abs(mask.playbackRate - maskBaseRate) > 0.01) {
+                mask.playbackRate = maskBaseRate
+              }
             }
           }
         }
