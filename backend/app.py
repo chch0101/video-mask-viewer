@@ -967,18 +967,22 @@ def serve_mask_video(filename):
 
 @app.route('/api/mosaic-check/<name>', methods=['GET'])
 def check_mosaic(name):
-    """모자이크 비디오 존재 여부 확인 (mask_source 파라미터 지원, S3 폴백)"""
+    """모자이크 비디오 존재 여부 확인 (mask_source 파라미터 지원, S3 폴백)
+
+    S3 경로 구조: video/mosaic/{mask_source}/{filename}.mp4 (사전 생성된 파일)
+    """
     task = get_task_name(name)
     mask_source = request.args.get('mask_source', '')
 
     if mask_source:
-        mosaic_path = os.path.join(VIDEO_DIR, 'mosaic', mask_source, task, f'{name}.mp4')
-        video_path = f'/video/mosaic/{mask_source}/{task}/{name}.mp4'
-        s3_key = f"{S3_PREFIX}/mosaic/{mask_source}/{task}/{name}.mp4"
+        # 새로운 단순화된 경로: video/mosaic/{mask_source}/{filename}.mp4
+        mosaic_path = os.path.join(VIDEO_DIR, 'mosaic', mask_source, f'{name}.mp4')
+        video_path = f'/video/mosaic/{mask_source}/{name}.mp4'
+        s3_key = f"{S3_PREFIX}/mosaic/{mask_source}/{name}.mp4"
     else:
-        mosaic_path = os.path.join(VIDEO_DIR, 'mosaic', task, f'{name}.mp4')
-        video_path = f'/video/mosaic/{task}/{name}.mp4'
-        s3_key = f"{S3_PREFIX}/mosaic/{task}/{name}.mp4"
+        mosaic_path = os.path.join(VIDEO_DIR, 'mosaic', f'{name}.mp4')
+        video_path = f'/video/mosaic/{name}.mp4'
+        s3_key = f"{S3_PREFIX}/mosaic/{name}.mp4"
 
     # 로컬 또는 S3에 존재하는지 확인 (파일 크기도 확인 - 손상된 파일 제외)
     exists = False
@@ -1014,14 +1018,14 @@ def generate_mosaic():
         return jsonify({'error': 'Invalid video name format'}), 400
     number = match.group(1)
 
-    # 경로 설정: mask_source가 있으면 다른 폴더 사용
+    # 경로 설정: 새 구조 video/mosaic/{mask_source}/{filename}.mp4
     if mask_source:
-        mosaic_path = os.path.join(VIDEO_DIR, 'mosaic', mask_source, task, f'{video_name}.mp4')
-        video_path = f'/video/mosaic/{mask_source}/{task}/{video_name}.mp4'
+        mosaic_path = os.path.join(VIDEO_DIR, 'mosaic', mask_source, f'{video_name}.mp4')
+        video_path = f'/video/mosaic/{mask_source}/{video_name}.mp4'
         mask_path = os.path.join(VIDEO_DIR, 'masks', mask_source, f'{video_name}.mp4')
     else:
-        mosaic_path = os.path.join(VIDEO_DIR, 'mosaic', task, f'{video_name}.mp4')
-        video_path = f'/video/mosaic/{task}/{video_name}.mp4'
+        mosaic_path = os.path.join(VIDEO_DIR, 'mosaic', f'{video_name}.mp4')
+        video_path = f'/video/mosaic/{video_name}.mp4'
         mask_path = os.path.join(VIDEO_DIR, 'mask', f'{video_name}.mp4')
 
     # 이미 존재하는지 확인
@@ -1109,9 +1113,78 @@ def generate_mosaic():
     })
 
 
+@app.route('/video/mosaic/<mask_source>/<filename>')
+def serve_mosaic_video_simple(mask_source, filename):
+    """사전 생성된 모자이크 비디오 서빙 (S3 우선, 로컬 폴백)
+
+    경로 구조: video/mosaic/{mask_source}/{filename}.mp4
+    """
+    mosaic_dir = os.path.join(VIDEO_DIR, 'mosaic', mask_source)
+    mosaic_path = os.path.join(mosaic_dir, filename)
+
+    # 먼저 S3에서 확인 (사전 생성된 파일이 S3에 업로드됨)
+    if USE_S3:
+        s3_key = f"{S3_PREFIX}/mosaic/{mask_source}/{filename}"
+        if s3_file_exists(s3_key):
+            url = get_s3_presigned_url(s3_key)
+            if url:
+                print(f"[S3 Redirect] mosaic/{mask_source}/{filename}")
+                return redirect(url)
+
+    # 로컬 파일 확인
+    if not os.path.exists(mosaic_path):
+        return jsonify({'error': 'File not found'}), 404
+
+    # 코덱 및 FPS 확인 후 필요 시 변환
+    codec = get_video_codec(mosaic_path)
+    fps = get_video_fps(mosaic_path)
+    needs_codec = codec != 'h264'
+    needs_fps = abs(fps - TARGET_FPS) > 0.5
+
+    if not needs_codec and not needs_fps:
+        return send_from_directory(mosaic_dir, filename)
+
+    # 변환 필요 시 캐시
+    cached_filename = f"{mask_source}_{os.path.splitext(filename)[0]}_mosaic30.mp4"
+    cached_path = os.path.join(CACHE_DIR, cached_filename)
+    converting_marker = cached_path + '.converting'
+
+    if os.path.exists(cached_path):
+        return send_file(cached_path, mimetype='video/mp4')
+
+    if os.path.exists(converting_marker):
+        print(f"Mosaic {mask_source}/{filename}: 다른 요청이 변환 중, 원본 반환")
+        return send_from_directory(mosaic_dir, filename)
+
+    try:
+        with open(converting_marker, 'w') as f:
+            f.write('converting')
+
+        with FFMPEG_SEMAPHORE:
+            subprocess.run(
+                ['ffmpeg', '-y', '-i', mosaic_path,
+                 '-threads', '1',
+                 '-r', str(TARGET_FPS),
+                 '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+                 '-c:a', 'copy', cached_path],
+                capture_output=True, check=True
+            )
+        print(f"Mosaic {mask_source}/{filename} 변환 완료")
+
+        if os.path.exists(converting_marker):
+            os.remove(converting_marker)
+
+        return send_file(cached_path, mimetype='video/mp4')
+    except Exception as e:
+        print(f"Mosaic conversion failed: {e}")
+        if os.path.exists(converting_marker):
+            os.remove(converting_marker)
+        return send_from_directory(mosaic_dir, filename)
+
+
 @app.route('/video/mosaic/<task>/<filename>')
 def serve_mosaic_video(task, filename):
-    """모자이크 비디오 서빙 (S3 폴백 지원)"""
+    """모자이크 비디오 서빙 - 레거시 경로 (S3 폴백 지원)"""
     mosaic_dir = os.path.join(VIDEO_DIR, 'mosaic', task)
     mosaic_path = os.path.join(mosaic_dir, filename)
 

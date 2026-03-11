@@ -297,12 +297,13 @@ def process_single_video(task: str, number: str, block_size: int = 15,
     source_path = SOURCE_DIR / f"{video_name}.mp4"
 
     # mask_source가 지정되면 masks 폴더 사용, 아니면 기본 MASK_DIR 사용
+    # 새 경로 구조: video/mosaic/{mask_source}/{filename}.mp4
     if mask_source:
         mask_path = BASE_DIR / "video" / "masks" / mask_source / f"{video_name}.mp4"
-        output_path = OUTPUT_DIR / mask_source / task / f"{video_name}.mp4"
+        output_path = OUTPUT_DIR / mask_source / f"{video_name}.mp4"
     else:
         mask_path = MASK_DIR / f"{video_name}.mp4"
-        output_path = OUTPUT_DIR / task / f"{video_name}.mp4"
+        output_path = OUTPUT_DIR / f"{video_name}.mp4"
 
     actual_source = source_url if source_url else str(source_path)
     actual_mask = mask_url if mask_url else str(mask_path)
@@ -372,10 +373,12 @@ def process_batch(mask_source: str = "rexomni", block_size: int = 15,
                   use_contour: bool = True):
     """
     video/source의 모든 영상을 video/masks/{mask_source}와 매칭하여
-    video/result에 모자이크 처리 후 저장 (H.264 코덱)
+    video/mosaic/{mask_source}/{filename}.mp4에 모자이크 처리 후 저장 (H.264 코덱)
     - source에 있지만 mask에 없는 영상은 스킵
+    - S3 업로드 경로와 동일한 구조: video/mosaic/{mask_source}/{filename}.mp4
     """
-    result_dir = BASE_DIR / "video" / "result"
+    # 새 경로 구조: video/mosaic/{mask_source}/{filename}.mp4
+    output_base_dir = BASE_DIR / "video" / "mosaic" / mask_source
     masks_dir = BASE_DIR / "video" / "masks" / mask_source
 
     if not SOURCE_DIR.exists():
@@ -402,7 +405,7 @@ def process_batch(mask_source: str = "rexomni", block_size: int = 15,
             pairs.append({
                 'source': str(source_path),
                 'mask': str(mask_path),
-                'output': str(result_dir / source_path.name)
+                'output': str(output_base_dir / source_path.name)
             })
         else:
             skipped.append(source_path.name)
@@ -410,7 +413,7 @@ def process_batch(mask_source: str = "rexomni", block_size: int = 15,
     print(f"=== 배치 처리 시작 ===")
     print(f"소스 폴더: {SOURCE_DIR}")
     print(f"마스크 폴더: {masks_dir}")
-    print(f"결과 폴더: {result_dir}")
+    print(f"결과 폴더: {output_base_dir}")
     print(f"처리할 영상: {len(pairs)}개")
     print(f"스킵 (마스크 없음): {len(skipped)}개")
 
@@ -421,7 +424,7 @@ def process_batch(mask_source: str = "rexomni", block_size: int = 15,
         print("처리할 영상이 없습니다.")
         return
 
-    result_dir.mkdir(parents=True, exist_ok=True)
+    output_base_dir.mkdir(parents=True, exist_ok=True)
 
     total_start = time.time()
     success_count = 0
@@ -496,7 +499,7 @@ if __name__ == "__main__":
         print("  모든 비디오: python mosaic.py --all")
         print("")
         print("옵션:")
-        print("  --batch-all: source 전체를 masks/{mask-source}와 매칭하여 result에 저장")
+        print("  --batch-all: source 전체를 masks/{mask-source}와 매칭하여 mosaic/{mask-source}/에 저장")
         print("  --mask-source: 마스크 폴더 이름 (기본값: rexomni)")
         print("  --block: 모자이크 블록 크기 (기본값 15, 클수록 더 강한 모자이크)")
         print(f"  --workers: 병렬 처리 워커 수 (기본값 {DEFAULT_WORKERS})")

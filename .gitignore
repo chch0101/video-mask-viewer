@@ -41,3 +41,6 @@ backend/cache/
 # Logs
 *.log
 npm-debug.log*
+
+# Claude
+.claude/
