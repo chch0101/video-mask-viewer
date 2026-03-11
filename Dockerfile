@@ -31,6 +31,7 @@ COPY --from=frontend-builder /app/frontend/dist ./backend/static
 
 # Copy other necessary files
 COPY mosaic.py overlay.py ./
+COPY utils/ ./utils/
 
 # Create directories (video will be mounted as Railway Volume)
 RUN mkdir -p /app/video/source /app/video/mask /app/video/masks /app/video/mosaic /app/video/overlay /app/evaluations /app/backend/cache
