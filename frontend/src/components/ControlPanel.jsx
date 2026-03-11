@@ -74,8 +74,11 @@ const ControlPanel = memo(function ControlPanel({
           border: '1px solid #e0e0e0', marginBottom: '5px'
         }}>
           {user.picture && <img src={user.picture} alt="profile" style={{ width: 32, height: 32, borderRadius: '50%' }} />}
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-            <span style={{ fontWeight: 'bold', fontSize: '14px', lineHeight: '1.2' }}>{user.name}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+            <span style={{
+              fontWeight: 'bold', fontSize: '14px', lineHeight: '1.2',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+            }}>{user.name}</span>
             <span style={{ color: '#666', fontSize: '12px' }}>Saved: {user.saved_count || 0}</span>
           </div>
           <button 
