@@ -988,6 +988,31 @@ const VideoPlayer = forwardRef(function VideoPlayer({
             ⏳ 마스크 비디오 변환 중...
           </div>
         )}
+        {/* 현재 마스크 소스에 마스크가 없을 때 경고 */}
+        {currentVideo && selectedMaskSource &&
+         currentVideo.availableMasks?.length > 0 &&
+         !currentVideo.availableMasks.includes(selectedMaskSource) && (
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            background: 'rgba(255, 152, 0, 0.95)',
+            color: '#fff',
+            padding: '16px 24px',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: '500',
+            textAlign: 'center',
+            zIndex: 20,
+            maxWidth: '80%'
+          }}>
+            ⚠️ '{selectedMaskSource}' 소스에 마스크가 없습니다<br />
+            <span style={{ fontSize: '12px', opacity: 0.9 }}>
+              사용 가능: {currentVideo.availableMasks.join(', ')}
+            </span>
+          </div>
+        )}
         <div className="debug-info">
           {debugInfo}
           {isPlaying && liveFps.source > 0 && (

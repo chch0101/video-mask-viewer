@@ -126,35 +126,58 @@ const ControlPanel = memo(function ControlPanel({
         </select>
       </div>
 
-      {currentVideo && (
-        <div className="info-box" style={{ background: '#e3f2fd', borderLeft: '3px solid #2196f3' }}>
-          <div style={{ fontSize: '11px', color: '#666', marginBottom: '4px' }}>
-            Available Masks
-          </div>
-          {currentVideo.availableMasks?.length > 0 ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {currentVideo.availableMasks.map(mask => (
-                <span
-                  key={mask}
-                  style={{
-                    padding: '2px 6px',
+      {currentVideo && (() => {
+        const hasCurrentMask = currentVideo.availableMasks?.includes(selectedMaskSource)
+        const hasMasks = currentVideo.availableMasks?.length > 0
+
+        return (
+          <div className="info-box" style={{
+            background: !hasCurrentMask && hasMasks ? '#fff3e0' : '#e3f2fd',
+            borderLeft: `3px solid ${!hasCurrentMask && hasMasks ? '#ff9800' : '#2196f3'}`
+          }}>
+            <div style={{ fontSize: '11px', color: '#666', marginBottom: '4px' }}>
+              Available Masks
+            </div>
+            {hasMasks ? (
+              <>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                  {currentVideo.availableMasks.map(mask => (
+                    <span
+                      key={mask}
+                      style={{
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        backgroundColor: mask === selectedMaskSource ? '#1976d2' : '#e0e0e0',
+                        color: mask === selectedMaskSource ? '#fff' : '#333',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => onMaskSourceChange(mask)}
+                    >
+                      {mask}
+                    </span>
+                  ))}
+                </div>
+                {!hasCurrentMask && (
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '6px 8px',
+                    background: '#ffecb3',
                     borderRadius: '4px',
                     fontSize: '11px',
-                    backgroundColor: mask === selectedMaskSource ? '#1976d2' : '#e0e0e0',
-                    color: mask === selectedMaskSource ? '#fff' : '#333',
-                    cursor: 'pointer'
-                  }}
-                  onClick={() => onMaskSourceChange(mask)}
-                >
-                  {mask}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <div style={{ color: '#f44336', fontSize: '12px' }}>No masks available</div>
-          )}
-        </div>
-      )}
+                    color: '#e65100'
+                  }}>
+                    ⚠️ 현재 선택된 '{selectedMaskSource}'에는 마스크가 없습니다.
+                    위 태그를 클릭하여 다른 소스를 선택하세요.
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ color: '#f44336', fontSize: '12px' }}>No masks available</div>
+            )}
+          </div>
+        )
+      })()}
 
       <div className="nav-buttons">
         <button
