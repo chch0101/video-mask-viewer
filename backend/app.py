@@ -181,8 +181,8 @@ BASE_DIR = get_base_dir()
 RESOURCE_DIR = get_resource_dir()
 VIDEO_DIR = os.environ.get('VIDEO_DIR', os.path.join(BASE_DIR, 'video'))
 EVALUATIONS_DIR = os.environ.get('EVALUATIONS_DIR', os.path.join(BASE_DIR, 'evaluations'))
-CACHE_DIR = os.path.join(RESOURCE_DIR, 'cache')
-STATIC_DIR = os.path.join(RESOURCE_DIR, 'static')
+CACHE_DIR = os.path.abspath(os.path.join(RESOURCE_DIR, 'cache'))
+STATIC_DIR = os.path.abspath(os.path.join(RESOURCE_DIR, 'static'))
 # 환경 설정
 S3_CACHE_FILE = os.path.join(CACHE_DIR, 's3_cache.json')
 S3_CACHE_EXPIRY = 3600  # 1 시간
@@ -1744,6 +1744,17 @@ if __name__ == '__main__':
     print(f"S3 enabled: {USE_S3}")
     if USE_S3:
         print(f"S3 bucket: {S3_BUCKET}, region: {S3_REGION}, prefix: {S3_PREFIX}")
+
+    # 정적 파일 존재 확인
+    if not os.path.exists(STATIC_DIR):
+        print(f"[!] WARNING: Static directory NOT FOUND: {STATIC_DIR}")
+    else:
+        index_path = os.path.join(STATIC_DIR, 'index.html')
+        if os.path.exists(index_path):
+            print(f"[+] Static directory found and index.html exists: {STATIC_DIR}")
+        else:
+            print(f"[!] WARNING: Static directory found but index.html MISSING: {STATIC_DIR}")
+            print(f"    Directory contents: {os.listdir(STATIC_DIR) if os.path.isdir(STATIC_DIR) else 'Not a directory'}")
 
     # ffmpeg 자동 설치 확인
     ensure_ffmpeg()

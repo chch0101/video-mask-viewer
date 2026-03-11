@@ -32,8 +32,13 @@ function AppContent() {
   const [maskSourceLoading, setMaskSourceLoading] = useState(false)
   const [videoUrls, setVideoUrls] = useState({})
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('vmask_user')
-    return saved ? JSON.parse(saved) : null
+    try {
+      const saved = localStorage.getItem('vmask_user')
+      return saved ? JSON.parse(saved) : null
+    } catch (err) {
+      console.error("Failed to parse user from localStorage", err)
+      return null
+    }
   })
 
   const videoPlayerRef = useRef(null)

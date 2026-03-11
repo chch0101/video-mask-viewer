@@ -7,6 +7,7 @@ __pycache__/
 
 # Build outputs
 frontend/dist/
+backend/static/
 *.egg-info/
 
 # IDE
