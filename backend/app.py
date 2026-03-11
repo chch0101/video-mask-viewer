@@ -980,8 +980,13 @@ def check_mosaic(name):
         video_path = f'/video/mosaic/{task}/{name}.mp4'
         s3_key = f"{S3_PREFIX}/mosaic/{task}/{name}.mp4"
 
-    # 로컬 또는 S3에 존재하는지 확인
-    exists = os.path.exists(mosaic_path)
+    # 로컬 또는 S3에 존재하는지 확인 (파일 크기도 확인 - 손상된 파일 제외)
+    exists = False
+    if os.path.exists(mosaic_path):
+        file_size = os.path.getsize(mosaic_path)
+        exists = file_size > 1000  # 1KB 이상이어야 유효한 파일로 간주
+        if not exists:
+            print(f"[Mosaic Check] Invalid file (size={file_size}): {mosaic_path}")
     if not exists and USE_S3:
         exists = s3_file_exists(s3_key)
 
@@ -1253,8 +1258,13 @@ def check_overlay(name):
         video_path = f'/video/overlay/{task}/{name}.mp4'
         s3_key = f"{S3_PREFIX}/overlay/{task}/{name}.mp4"
 
-    # 로컬 또는 S3에 존재하는지 확인
-    exists = os.path.exists(overlay_path)
+    # 로컬 또는 S3에 존재하는지 확인 (파일 크기도 확인 - 손상된 파일 제외)
+    exists = False
+    if os.path.exists(overlay_path):
+        file_size = os.path.getsize(overlay_path)
+        exists = file_size > 1000  # 1KB 이상이어야 유효한 파일로 간주
+        if not exists:
+            print(f"[Overlay Check] Invalid file (size={file_size}): {overlay_path}")
     if not exists and USE_S3:
         exists = s3_file_exists(s3_key)
 
