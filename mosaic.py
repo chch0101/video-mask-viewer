@@ -1,4 +1,5 @@
 import os
+import sys
 import cv2
 import numpy as np
 import subprocess
@@ -7,6 +8,12 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from threading import Thread
 from queue import Queue
+
+# 현재 파일 기준으로 프로젝트 루트를 PYTHONPATH에 추가
+PROJECT_ROOT = Path(__file__).parent.resolve()
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from utils.video_utils import get_video_pairs
 
 # M1 Pro 최적화 기본값

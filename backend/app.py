@@ -380,6 +380,39 @@ def get_videos():
                         except Exception:
                             pass
 
+    # 각 비디오에 대해 어떤 mask source들에 마스크가 있는지 확인하기 위한 준비
+    masks_dir = os.path.join(VIDEO_DIR, 'masks')
+    local_mask_sources = []
+    if os.path.exists(masks_dir):
+        local_mask_sources = [d for d in os.listdir(masks_dir)
+                              if os.path.isdir(os.path.join(masks_dir, d)) and not d.startswith('.')]
+
+    # S3 캐시에서 마스크 정보 가져오기
+    s3_cache = get_s3_cache() if USE_S3 and s3_client else {}
+    s3_files_set = s3_cache.get('_s3_files_set', set())
+
+    def get_available_masks(video_name):
+        """비디오에 대해 사용 가능한 mask source 목록 반환"""
+        available = []
+        filename = f"{video_name}.mp4"
+
+        # 로컬 masks 폴더 확인
+        for source_name in local_mask_sources:
+            mask_path = os.path.join(masks_dir, source_name, filename)
+            if os.path.exists(mask_path):
+                available.append(source_name)
+
+        # S3에서 추가 확인 (로컬에 없는 것만)
+        if USE_S3 and s3_files_set:
+            for s3_source in s3_cache.get('sources', []):
+                source_name = s3_source['name']
+                if source_name not in available:
+                    s3_key = f"{S3_PREFIX}/masks/{source_name}/{filename}"
+                    if s3_key in s3_files_set:
+                        available.append(source_name)
+
+        return sorted(available)
+
     videos = []
 
     if os.path.exists(source_dir):
@@ -395,12 +428,12 @@ def get_videos():
                     'name': name,
                     'source': filename,
                     'mask': mask_file,
-                    'evaluated': name in evaluated_names
+                    'evaluated': name in evaluated_names,
+                    'availableMasks': get_available_masks(name)
                 })
 
     # S3 폴백: 로컬에 없는 비디오 추가 (캐시 사용)
     if USE_S3 and s3_client:
-        s3_cache = get_s3_cache()
         for filename in s3_cache.get('videos', []):
             name = filename.replace('.mp4', '')
             if name not in local_video_names:
@@ -409,7 +442,8 @@ def get_videos():
                     'source': filename,
                     'mask': filename,
                     'evaluated': name in evaluated_names,
-                    's3': True
+                    's3': True,
+                    'availableMasks': get_available_masks(name)
                 })
         # S3 비디오 포함 후 다시 정렬
         videos.sort(key=lambda x: x['name'])

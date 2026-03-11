@@ -91,13 +91,48 @@ const ControlPanel = memo(function ControlPanel({
           value={currentVideo?.name || ''}
           onChange={(e) => onVideoSelect(e.target.value)}
         >
-          {filteredVideos.map((video) => (
-            <option key={video.name} value={video.name}>
-              {video.source}
-            </option>
-          ))}
+          {filteredVideos.map((video) => {
+            const maskCount = video.availableMasks?.length || 0
+            const hasMask = maskCount > 0
+            const hasSelectedMask = video.availableMasks?.includes(selectedMaskSource)
+            return (
+              <option key={video.name} value={video.name}>
+                {hasMask ? (hasSelectedMask ? '●' : '○') : '✕'} {video.source} [{maskCount}]
+              </option>
+            )
+          })}
         </select>
       </div>
+
+      {currentVideo && (
+        <div className="info-box" style={{ background: '#e3f2fd', borderLeft: '3px solid #2196f3' }}>
+          <div style={{ fontSize: '11px', color: '#666', marginBottom: '4px' }}>
+            Available Masks
+          </div>
+          {currentVideo.availableMasks?.length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              {currentVideo.availableMasks.map(mask => (
+                <span
+                  key={mask}
+                  style={{
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    backgroundColor: mask === selectedMaskSource ? '#1976d2' : '#e0e0e0',
+                    color: mask === selectedMaskSource ? '#fff' : '#333',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => onMaskSourceChange(mask)}
+                >
+                  {mask}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: '#f44336', fontSize: '12px' }}>No masks available</div>
+          )}
+        </div>
+      )}
 
       <div className="nav-buttons">
         <button
