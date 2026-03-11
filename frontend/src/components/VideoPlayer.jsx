@@ -918,6 +918,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
           preload="auto"
         />
         <video
+          key={`mask-${currentVideo?.name}-${selectedMaskSource}`}
           ref={maskVideoRef}
           src={currentVideo && selectedMaskSource
             ? (videoUrls.mask || `/video/masks/${selectedMaskSource}/${currentVideo.mask}`)
