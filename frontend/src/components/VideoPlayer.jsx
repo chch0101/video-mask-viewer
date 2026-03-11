@@ -15,7 +15,6 @@ const BLEND_MAP = {
 const VideoPlayer = forwardRef(function VideoPlayer({
   currentVideo,
   viewingMosaic,
-  viewingOverlay,
   videoPreparing = false,
   selectedMaskSource = '',
   videoUrls = {},
@@ -30,7 +29,6 @@ const VideoPlayer = forwardRef(function VideoPlayer({
   const sourceVideoRef = useRef(null)
   const maskVideoRef = useRef(null)
   const mosaicVideoRef = useRef(null)
-  const overlayVideoRef = useRef(null)
   const canvasRef = useRef(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -48,7 +46,8 @@ const VideoPlayer = forwardRef(function VideoPlayer({
   const sourceLoadedRef = useRef(false)
   const fpsRef = useRef(30)
   const maskFpsRef = useRef(30)
-  // source와 mask의 duration 비율 (다른 길이일 때 동기화용)
+  // source와 mask의 duration 비율
+  const totalFramesRef = useRef(0)
   const durationRatioRef = useRef(1)
   const renderAnimRef = useRef(null)
   const drawFrameRef = useRef(null)
@@ -70,21 +69,6 @@ const VideoPlayer = forwardRef(function VideoPlayer({
     const sourceVideo = sourceVideoRef.current
     const maskVideo = maskVideoRef.current
     const mosaicVideo = mosaicVideoRef.current
-    const overlayVideo = overlayVideoRef.current
-
-    // 오버레이 모드일 때 (미리 합성된 영상)
-    if (viewingOverlay && overlayVideo && overlayVideo.readyState >= 2) {
-      if (!canvas) return
-      const ctx = canvas.getContext('2d')
-      if (canvas.width !== overlayVideo.videoWidth || canvas.height !== overlayVideo.videoHeight) {
-        canvas.width = overlayVideo.videoWidth
-        canvas.height = overlayVideo.videoHeight
-      }
-      ctx.globalAlpha = 1
-      ctx.globalCompositeOperation = 'source-over'
-      ctx.drawImage(overlayVideo, 0, 0, canvas.width, canvas.height)
-      return
-    }
 
     // 모자이크 모드일 때
     if (viewingMosaic && mosaicVideo && mosaicVideo.readyState >= 2) {
@@ -125,7 +109,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
       ctx.globalAlpha = 1
       ctx.globalCompositeOperation = 'source-over'
     }
-  }, [viewingOverlay, viewingMosaic, maskSettings.visible, maskSettings.opacity, maskSettings.blendMode])
+  }, [viewingMosaic, maskSettings.visible, maskSettings.opacity, maskSettings.blendMode])
 
   // drawFrame의 최신 참조를 항상 유지 (렌더 루프에서 사용)
   useEffect(() => {
@@ -137,25 +121,17 @@ const VideoPlayer = forwardRef(function VideoPlayer({
     playbackRateRef.current = playbackRate
   }, [playbackRate])
 
-  // 모자이크/오버레이 전환 시 현재 시간 저장 및 복원
+  // 모자이크 전환 시 현재 시간 저장 및 복원
   useEffect(() => {
     const sourceVideo = sourceVideoRef.current
     const maskVideo = maskVideoRef.current
     const mosaicVideo = mosaicVideoRef.current
-    const overlayVideo = overlayVideoRef.current
 
     // 모드 전환 시 오류 방지를 위해 무조건 일시 정지
     setIsPlaying(false)
     stopRenderLoop()
 
-    if (viewingOverlay) {
-      // 오버레이 모드로 전환: source 비디오 일시 정지 및 현재 시간 저장
-      if (sourceVideo) {
-        sourceVideo.pause()
-        if (maskVideo) maskVideo.pause()
-        savedTimeRef.current = sourceVideo.currentTime
-      }
-    } else if (viewingMosaic) {
+    if (viewingMosaic) {
       // 모자이크 모드로 전환: source 비디오 일시 정지 및 현재 시간 저장
       if (sourceVideo) {
         sourceVideo.pause()
@@ -163,12 +139,11 @@ const VideoPlayer = forwardRef(function VideoPlayer({
         savedTimeRef.current = sourceVideo.currentTime
       }
     } else {
-      // 일반 모드로 전환: overlay/mosaic 비디오 일시 정지 및 현재 시간으로 source/mask 복원
-      if (overlayVideo) overlayVideo.pause()
+      // 일반 모드로 전환: mosaic 비디오 일시 정지 및 현재 시간으로 source/mask 복원
       if (mosaicVideo) mosaicVideo.pause()
 
       // 이전 모드에서 현재 시간 가져오기
-      const targetTime = overlayVideo?.currentTime || mosaicVideo?.currentTime || savedTimeRef.current
+      const targetTime = mosaicVideo?.currentTime || savedTimeRef.current
 
       if (targetTime >= 0 && sourceVideo && maskVideo) {
         savedTimeRef.current = targetTime
@@ -201,21 +176,25 @@ const VideoPlayer = forwardRef(function VideoPlayer({
         }, { once: true })
       }
     }
-  }, [viewingMosaic, viewingOverlay])
+  }, [viewingMosaic])
+
+  // mask source 변경 시 소스가 로드될 때까지 일시 정지 (싱크 방지)
+  useEffect(() => {
+    if (selectedMaskSource) {
+      const sourceVideo = sourceVideoRef.current
+      const maskVideo = maskVideoRef.current
+      
+      if (isPlaying) {
+        setIsPlaying(false)
+        sourceVideo?.pause()
+        maskVideo?.pause()
+        stopRenderLoop()
+      }
+    }
+  }, [selectedMaskSource])
 
   // 두 비디오가 모두 seek 완료된 후 캔버스를 갱신하는 헬퍼
   const drawAfterSeek = () => {
-    // 오버레이 모드일 때는 overlay 비디오의 seeked 이벤트만 감지
-    if (viewingOverlay) {
-      const overlay = overlayVideoRef.current
-      if (!overlay) return
-      overlay.addEventListener('seeked', function onSeeked() {
-        overlay.removeEventListener('seeked', onSeeked)
-        drawFrameRef.current?.()
-      })
-      return
-    }
-
     // 모자이크 모드일 때는 mosaic 비디오의 seeked 이벤트만 감지
     if (viewingMosaic) {
       const mosaic = mosaicVideoRef.current
@@ -260,10 +239,8 @@ const VideoPlayer = forwardRef(function VideoPlayer({
     seekFrames: (frames) => {
       const fps = fpsRef.current
       const seekTime = frames / fps
-      // 오버레이/모자이크/일반 모드에 따라 활성 비디오 결정
-      const activeVideo = viewingOverlay
-        ? overlayVideoRef.current
-        : viewingMosaic
+      // 모자이크/일반 모드에 따라 활성 비디오 결정
+      const activeVideo = viewingMosaic
           ? mosaicVideoRef.current
           : sourceVideoRef.current
       const maskVideo = maskVideoRef.current
@@ -272,7 +249,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
 
         // 재생 중이면 일시 정지하여 정확한 seek 보장 (일반 모드일 때만)
         const wasPlaying = !activeVideo.paused
-        if (wasPlaying && !viewingMosaic && !viewingOverlay) {
+        if (wasPlaying && !viewingMosaic) {
           activeVideo.pause()
           maskVideo?.pause()
           stopRenderLoop()
@@ -281,24 +258,22 @@ const VideoPlayer = forwardRef(function VideoPlayer({
 
         activeVideo.currentTime = newTime
         // 퍼센트 기반 동기화: 비율로 계산 (일반 모드일 때만)
-        if (!viewingMosaic && !viewingOverlay && maskVideo) {
+        if (!viewingMosaic && maskVideo) {
           maskVideo.currentTime = newTime * durationRatioRef.current
         }
         if (activeVideo.paused) drawAfterSeek()
       }
     },
     seekToTime: (targetTime) => {
-      // 오버레이/모자이크/일반 모드에 따라 활성 비디오 결정
-      const activeVideo = viewingOverlay
-        ? overlayVideoRef.current
-        : viewingMosaic
+      // 모자이크/일반 모드에 따라 활성 비디오 결정
+      const activeVideo = viewingMosaic
           ? mosaicVideoRef.current
           : sourceVideoRef.current
       const maskVideo = maskVideoRef.current
       if (activeVideo) {
         // 재생 중이면 일시 정지하여 정확한 seek 보장 (일반 모드일 때만)
         const wasPlaying = !activeVideo.paused
-        if (wasPlaying && !viewingMosaic && !viewingOverlay) {
+        if (wasPlaying && !viewingMosaic) {
           activeVideo.pause()
           maskVideo?.pause()
           stopRenderLoop()
@@ -307,7 +282,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
 
         activeVideo.currentTime = targetTime
         // 퍼센트 기반 동기화: source와 mask의 길이가 다를 수 있으므로 비율로 계산 (일반 모드일 때만)
-        if (!viewingMosaic && !viewingOverlay && maskVideo) {
+        if (!viewingMosaic && maskVideo) {
           maskVideo.currentTime = targetTime * durationRatioRef.current
         }
 
@@ -318,16 +293,21 @@ const VideoPlayer = forwardRef(function VideoPlayer({
       }
     },
     getCurrentFrame: () => {
-      // 오버레이/모자이크/일반 모드에 따라 활성 비디오 결정
-      const activeVideo = viewingOverlay
-        ? overlayVideoRef.current
-        : viewingMosaic
+      const activeVideo = viewingMosaic
           ? mosaicVideoRef.current
           : sourceVideoRef.current
-      if (activeVideo) {
-        return Math.floor(activeVideo.currentTime * fpsRef.current)
+      if (!activeVideo) return 0
+      
+      const fps = fpsRef.current
+      const totalFrames = totalFramesRef.current
+      
+      // 버림(floor) 대신 반올림(round) 또는 정확한 인덱스 계산
+      // 마지막 프레임 버그 해결을 위해 totalFrames - 1 로 캡핑
+      let frame = Math.floor(activeVideo.currentTime * fps)
+      if (totalFrames > 0 && frame >= totalFrames) {
+        frame = totalFrames - 1
       }
-      return 0
+      return Math.max(0, frame)
     },
     togglePlay: () => {
       togglePlay()
@@ -404,22 +384,23 @@ const VideoPlayer = forwardRef(function VideoPlayer({
     fetch(`/api/video-meta/${currentVideo.source.replace('.mp4', '')}`)
       .then(res => res.json())
       .then(data => {
-        if (!active) return
-        if (data.fps) {
-          fpsRef.current = data.sourceFps || 30
-          maskFpsRef.current = data.maskFps || 30
+        if (data && active) {
+          // 백엔드에서 전달받은 메타데이터 저장
+          if (data.fps) fpsRef.current = data.fps
+          if (data.totalFrames) totalFramesRef.current = data.totalFrames
+          
+          if (data.sourceFps) fpsRef.current = data.sourceFps
+          if (data.maskFps) maskFpsRef.current = data.maskFps
           updateDebugInfo()
 
-          // is_s3 플래그가 전송되면, S3에서 다이렉트로 서빙되는 영상이므로
-          // 백엔드 FFMPEG의 강제 30fps 변환을 거치지 않음. 
-          // 따라서 HTML5 Video 태그의 오리지널 길이를 전적으로 신뢰해야 함.
-          if (data.is_s3) {
-            console.log("S3 Direct Video detected. Will rely strictly on HTML5 duration matching.", data)
-          }
-
           if (onMetadataLoaded) {
-            // (CSV 맵핑용으로 원본 fps 전달)
-            onMetadataLoaded({ fps: data.fps, is_s3: data.is_s3 })
+            // (CSV 맵핑용으로 원본 fps 및 정확한 totalFrames 전달)
+            onMetadataLoaded({ 
+              fps: data.fps, 
+              is_s3: data.is_s3,
+              frameCount: data.totalFrames,
+              totalFrames: data.totalFrames
+            })
           }
         }
       })
@@ -460,6 +441,25 @@ const VideoPlayer = forwardRef(function VideoPlayer({
     const handleSourceMetadata = () => {
       if (sourceVideo) {
         setDuration(sourceVideo.duration)
+
+        // 프레임 수 업데이트 및 상위 컴포넌트 알림
+        if (onMetadataLoaded) {
+          const duration = sourceVideo.duration
+          const fps = fpsRef.current
+          
+          // 이미 API에서 가져온 totalFrames가 있으면 유지, 없으면 계산
+          if (!totalFramesRef.current) {
+            totalFramesRef.current = Math.floor(duration * fps)
+          }
+
+          onMetadataLoaded({
+            frameCount: totalFramesRef.current,
+            fps: fps,
+            duration: duration,
+            totalFrames: totalFramesRef.current
+          })
+        }
+
         if (maskVideo && maskVideo.readyState >= 1) {
           // Both are ready, calculate duration ratio accurately
           // S3 videos may have differing length from 30fps conversions, so we need precise math
@@ -469,9 +469,6 @@ const VideoPlayer = forwardRef(function VideoPlayer({
           if (!isFinite(durationRatioRef.current) || durationRatioRef.current <= 0) {
             durationRatioRef.current = 1
           }
-        }
-        else {
-          durationRatioRef.current = 1 // default until mask loads
         }
       }
     }
@@ -582,17 +579,13 @@ const VideoPlayer = forwardRef(function VideoPlayer({
     const sourceVideo = sourceVideoRef.current
     const maskVideo = maskVideoRef.current
     const mosaicVideo = mosaicVideoRef.current
-    const overlayVideo = overlayVideoRef.current
     const wasPlaying = isPlaying
 
     setPlaybackRate(rate)
     playbackRateRef.current = rate  // ref도 업데이트
 
     // 오버레이 모드
-    if (viewingOverlay) {
-      if (overlayVideo) overlayVideo.playbackRate = rate
-      return
-    }
+    /* Skip overlay logic as it's removed */
 
     // 모자이크 모드
     if (viewingMosaic) {
@@ -626,14 +619,13 @@ const VideoPlayer = forwardRef(function VideoPlayer({
       const source = sourceVideoRef.current
       const mask = maskVideoRef.current
       const mosaic = mosaicVideoRef.current
-      const overlay = overlayVideoRef.current
 
-      // 오버레이/모자이크/일반 모드에 따라 활성 비디오 결정
-      const activeVideo = viewingOverlay ? overlay : viewingMosaic ? mosaic : source
+      // 모자이크/일반 모드에 따라 활성 비디오 결정
+      const activeVideo = viewingMosaic ? mosaic : source
       if (activeVideo && !activeVideo.paused) {
         const now = performance.now()
 
-        if (!viewingMosaic && !viewingOverlay) {
+          if (!viewingMosaic) {
           // 실시간 FPS 측정: currentTime 변화 감지 (source+mask 모드)
           if (source && source.currentTime !== lastSourceTime) {
             sourceFrameCount++
@@ -721,22 +713,6 @@ const VideoPlayer = forwardRef(function VideoPlayer({
   }
 
   const togglePlay = () => {
-    // 오버레이 모드
-    if (viewingOverlay) {
-      const overlayVideo = overlayVideoRef.current
-      if (!overlayVideo) return
-      if (isPlaying) {
-        overlayVideo.pause()
-        stopRenderLoop()
-        requestAnimationFrame(() => drawFrame())
-      } else {
-        overlayVideo.play()
-        startRenderLoop()
-      }
-      setIsPlaying(!isPlaying)
-      return
-    }
-
     // 모자이크 모드
     if (viewingMosaic) {
       const mosaicVideo = mosaicVideoRef.current
@@ -822,16 +798,6 @@ const VideoPlayer = forwardRef(function VideoPlayer({
     const percent = e.target.value / 100
     const newTime = percent * duration
 
-    // 오버레이 모드
-    if (viewingOverlay) {
-      const overlayVideo = overlayVideoRef.current
-      if (overlayVideo) {
-        overlayVideo.currentTime = newTime
-        drawAfterSeek()
-      }
-      return
-    }
-
     // 모자이크 모드
     if (viewingMosaic) {
       const mosaicVideo = mosaicVideoRef.current
@@ -900,8 +866,8 @@ const VideoPlayer = forwardRef(function VideoPlayer({
     <div className="main-content">
       <div className="video-header">
         <h1>{currentVideo?.source || 'No video selected'}</h1>
-        <span className={`badge ${viewingMosaic ? 'badge-mosaic' : viewingOverlay ? 'badge-overlay' : ''}`}>
-          {viewingOverlay ? '🎬 Overlay' : viewingMosaic ? '🎬 Mosaic' : 'Source + Mask'}
+        <span className={`badge ${viewingMosaic ? 'badge-mosaic' : ''}`}>
+          {viewingMosaic ? '🎬 Mosaic' : 'Source + Mask'}
         </span>
       </div>
 
@@ -944,10 +910,27 @@ const VideoPlayer = forwardRef(function VideoPlayer({
               const mv = mosaicVideoRef.current
               if (mv) {
                 setDuration(mv.duration)
+                const duration = mv.duration
+                const fps = fpsRef.current
+                const meta = {
+                  duration: duration
+                }
+
+                if (fps > 0) {
+                  fpsRef.current = fps
+                }
+                
+                // 백엔드에서 준 공식 totalFrames 가 있으면 우선 사용
+                if (meta.totalFrames) {
+                  totalFramesRef.current = meta.totalFrames
+                } else {
+                  totalFramesRef.current = Math.floor(duration * fps)
+                }
+
                 onMetadataLoaded?.({
-                  frameCount: Math.floor(mv.duration * fpsRef.current),
-                  fps: fpsRef.current,
-                  duration: mv.duration
+                  ...meta,
+                  frameCount: totalFramesRef.current,
+                  fps: fps
                 })
 
                 // 저장된 시간으로 seek (모자이크 전환 시 현재 프레임 유지)
@@ -982,58 +965,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
             }}
           />
         )}
-        {/* 오버레이 비디오 (오버레이 모드일 때만 로드) */}
-        {viewingOverlay && currentVideo && (
-          <video
-            ref={overlayVideoRef}
-            src={selectedMaskSource
-              ? `/video/overlay/${selectedMaskSource}/${currentVideo.name.replace(/_\d+$/, '')}/${currentVideo.name}.mp4`
-              : `/video/overlay/${currentVideo.name.replace(/_\d+$/, '')}/${currentVideo.name}.mp4`
-            }
-            crossOrigin="anonymous"
-            muted
-            playsInline
-            preload="auto"
-            onLoadedData={() => {
-              const ov = overlayVideoRef.current
-              if (ov) {
-                setDuration(ov.duration)
-                onMetadataLoaded?.({
-                  frameCount: Math.floor(ov.duration * fpsRef.current),
-                  fps: fpsRef.current,
-                  duration: ov.duration
-                })
-
-                // 저장된 시간으로 seek (오버레이 전환 시 현재 프레임 유지)
-                const targetTime = savedTimeRef.current >= 0 ? savedTimeRef.current : 0
-                if (Math.abs(ov.currentTime - targetTime) > 0.01) {
-                  ov.currentTime = targetTime
-                  ov.addEventListener('seeked', function onSeeked() {
-                    ov.removeEventListener('seeked', onSeeked)
-                    setCurrentTime(targetTime)
-                    onTimeUpdate?.(targetTime)
-                    requestAnimationFrame(() => drawFrame())
-                  }, { once: true })
-                } else {
-                  setCurrentTime(targetTime)
-                  onTimeUpdate?.(targetTime)
-                  requestAnimationFrame(() => drawFrame())
-                }
-              }
-            }}
-            onTimeUpdate={() => {
-              const ov = overlayVideoRef.current
-              if (ov) {
-                setCurrentTime(ov.currentTime)
-                onTimeUpdate?.(ov.currentTime)
-              }
-            }}
-            onEnded={() => {
-              setIsPlaying(false)
-              stopRenderLoop()
-            }}
-          />
-        )}
+        {/* 오버레이 비디오 제거됨 */}
         {/* Canvas: 소스 + 마스크 합성 렌더링 */}
         <canvas ref={canvasRef} className="composite-canvas" />
         {videoPreparing && (

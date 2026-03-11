@@ -36,6 +36,33 @@ def get_video_fps(filepath):
     except Exception:
         return 30.0
 
+def get_video_frame_count(filepath):
+    """비디오 총 프레임 수 확인 (ffprobe 사용)"""
+    try:
+        result = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+             '-show_entries', 'stream=nb_frames', '-of', 'default=noprint_wrappers=1:nokey=1',
+             filepath],
+            capture_output=True, text=True
+        )
+        frames_str = result.stdout.strip()
+        if frames_str and frames_str != 'N/A':
+            return int(frames_str)
+        
+        # nb_frames가 N/A인 경우 (주로 인코딩 방식에 따라 다름)
+        # 전체 길이를 구해서 FPS를 곱하는 방식으로 추정
+        result = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+             '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1',
+             filepath],
+            capture_output=True, text=True
+        )
+        duration = float(result.stdout.strip())
+        fps = get_video_fps(filepath)
+        return int(duration * fps)
+    except Exception:
+        return 0
+
 def convert_to_h264(input_path, output_path):
     """H264로 변환"""
     try:

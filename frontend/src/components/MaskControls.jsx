@@ -4,15 +4,10 @@ import { useMask } from '../contexts/MaskContext'
 const MaskControls = memo(function MaskControls({
   viewingMosaic,
   mosaicGenerating,
-  onToggleMosaic,
-  viewingOverlay,
-  overlayGenerating,
-  onToggleOverlay
+  onToggleMosaic
 }) {
   const { maskSettings, setOpacity, setBlendMode } = useMask()
   const [mosaicElapsed, setMosaicElapsed] = useState(0)
-  const [overlayElapsed, setOverlayElapsed] = useState(0)
-
   // 모자이크 생성 경과 시간 타이머
   useEffect(() => {
     if (mosaicGenerating) {
@@ -21,15 +16,6 @@ const MaskControls = memo(function MaskControls({
       return () => clearInterval(timer)
     }
   }, [mosaicGenerating])
-
-  // 오버레이 생성 경과 시간 타이머
-  useEffect(() => {
-    if (overlayGenerating) {
-      setOverlayElapsed(0)
-      const timer = setInterval(() => setOverlayElapsed(e => e + 1), 1000)
-      return () => clearInterval(timer)
-    }
-  }, [overlayGenerating])
 
   const formatTime = (seconds) => {
     const m = Math.floor(seconds / 60)
@@ -60,7 +46,7 @@ const MaskControls = memo(function MaskControls({
           onChange={(e) => setOpacity(Number(e.target.value))}
         />
       </div>
-      <div className="opacity-control" style={{ marginTop: '10px' }}>
+      <div className="opacity-control" style={{ marginTop: '10px', marginBottom: '15px' }}>
         <label>Blend Mode</label>
         <select
           value={maskSettings.blendMode}
@@ -76,27 +62,9 @@ const MaskControls = memo(function MaskControls({
       </div>
 
       <button
-        className={`overlay-toggle-btn ${viewingOverlay ? 'active' : ''}`}
-        onClick={onToggleOverlay}
-        disabled={overlayGenerating || viewingMosaic}
-        style={{ marginBottom: '8px', position: 'relative' }}
-      >
-        {overlayGenerating ? (
-          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-            <span className="spinner" style={{
-              width: '14px', height: '14px', border: '2px solid #fff',
-              borderTopColor: 'transparent', borderRadius: '50%',
-              animation: 'spin 1s linear infinite'
-            }} />
-            오버레이 생성 중... ({formatTime(overlayElapsed)})
-          </span>
-        ) : viewingOverlay ? '실시간 합성 보기' : '오버레이 보기 (권장)'}
-      </button>
-
-      <button
         className={`mosaic-toggle-btn ${viewingMosaic ? 'active' : ''}`}
         onClick={onToggleMosaic}
-        disabled={mosaicGenerating || viewingOverlay}
+        disabled={mosaicGenerating}
         style={{ position: 'relative' }}
       >
         {mosaicGenerating ? (

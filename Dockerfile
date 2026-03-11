@@ -34,13 +34,14 @@ COPY mosaic.py overlay.py ./
 COPY utils/ ./utils/
 
 # Create directories (video will be mounted as Railway Volume)
-RUN mkdir -p /app/video/source /app/video/mask /app/video/masks /app/video/mosaic /app/video/overlay /app/evaluations /app/backend/cache
+RUN mkdir -p /app/video/source /app/video/mask /app/video/masks /app/video/mosaic /app/video/overlay /app/evaluations /app/backend/cache /app/data
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PORT=5004
 ENV VIDEO_DIR=/app/video
 ENV EVALUATIONS_DIR=/app/evaluations
+ENV DATABASE_PATH=/app/data/evaluations.db
 
 WORKDIR /app/backend
 

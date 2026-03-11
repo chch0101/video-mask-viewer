@@ -3,6 +3,7 @@ import ControlPanel from './components/ControlPanel'
 import VideoPlayer from './components/VideoPlayer'
 import EvaluationPanel from './components/EvaluationPanel'
 import { MaskProvider, useMask } from './contexts/MaskContext'
+import { useGoogleLogin, googleLogout } from '@react-oauth/google'
 
 const initialEvaluations = {
   Q1: { result: null, frameRanges: [] },
@@ -24,17 +25,48 @@ function AppContent() {
   const [evaluationHistory, setEvaluationHistory] = useState([])
   const [viewingMosaic, setViewingMosaic] = useState(false)
   const [mosaicGenerating, setMosaicGenerating] = useState(false)
-  const [viewingOverlay, setViewingOverlay] = useState(false)
-  const [overlayGenerating, setOverlayGenerating] = useState(false)
   const [videoPreparing, setVideoPreparing] = useState(false)
   const [maskSources, setMaskSources] = useState([])
   const [selectedMaskSource, setSelectedMaskSource] = useState('')
   const [pendingMaskSource, setPendingMaskSource] = useState('') // UI용 즉시 반영
   const [maskSourceLoading, setMaskSourceLoading] = useState(false)
   const [videoUrls, setVideoUrls] = useState({})
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('vmask_user')
+    return saved ? JSON.parse(saved) : null
+  })
 
   const videoPlayerRef = useRef(null)
   const maskSourceDebounceRef = useRef(null)
+
+  // Google Login Hook
+  const login = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      try {
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: tokenResponse.access_token || tokenResponse.credential })
+        })
+        const data = await res.json()
+        if (data.success && data.user) {
+          setUser(data.user)
+          localStorage.setItem('vmask_user', JSON.stringify(data.user))
+        } else {
+          console.error("Login failed on backend", data)
+        }
+      } catch (err) {
+        console.error("Error during authentication", err)
+      }
+    },
+    onError: errorResponse => console.log(errorResponse),
+  });
+
+  const handleLogout = () => {
+    googleLogout()
+    setUser(null)
+    localStorage.removeItem('vmask_user')
+  }
 
   // 현재 비디오의 평가 기록 가져오기 + 최신 평가 자동 로드
   const fetchEvaluationHistory = useCallback(async (videoName, maskSource) => {
@@ -148,11 +180,6 @@ function AppContent() {
     // UI는 즉시 업데이트 (선택된 항목 표시)
     setPendingMaskSource(source)
 
-    // overlay 모드는 즉시 해제
-    if (viewingOverlay) {
-      setViewingOverlay(false)
-    }
-
     // 실제 비디오 로드는 디바운스 (300ms)
     // 빠르게 여러 번 변경 시 마지막 선택만 로드됨
     maskSourceDebounceRef.current = setTimeout(() => {
@@ -199,7 +226,8 @@ function AppContent() {
         body: JSON.stringify({
           video_name: currentVideo.name,
           evaluations: evaluations,
-          mask_source: selectedMaskSource
+          mask_source: selectedMaskSource,
+          user: user
         })
       })
 
@@ -208,6 +236,13 @@ function AppContent() {
         // 비디오 목록 갱신 (평가 완료 상태 반영)
         await fetchVideos(selectedMaskSource)
         await fetchEvaluationHistory(currentVideo.name, selectedMaskSource)
+
+        // 저장 후 DB에서 업데이트된 유저 카운트를 새로고침 하기 위한 임시 처리
+        if (user) {
+          const updatedUser = { ...user, saved_count: (user.saved_count || 0) + 1 }
+          setUser(updatedUser)
+          localStorage.setItem('vmask_user', JSON.stringify(updatedUser))
+        }
 
         // 자동으로 다음 비디오로 이동
         const currentIndex = videos.findIndex(v => v.name === currentVideo?.name)
@@ -270,7 +305,6 @@ function AppContent() {
     const video = videos.find(v => v.name === videoName)
     if (video) {
       setViewingMosaic(false)
-      setViewingOverlay(false)
       setVideoPreparing(true)
 
       try {
@@ -440,94 +474,21 @@ function AppContent() {
     }
   }
 
-  // 오버레이 보기 토글
-  const handleToggleOverlay = async () => {
-    if (viewingOverlay) {
-      // 오버레이 모드 OFF → 원래 source+mask 뷰로 복귀
-      setViewingOverlay(false)
-      return
-    }
-
-    if (!currentVideo) return
-
-    try {
-      // 오버레이 영상 존재 여부 확인 (mask_source 파라미터 포함)
-      const checkUrl = selectedMaskSource
-        ? `/api/overlay-check/${currentVideo.name}?mask_source=${selectedMaskSource}`
-        : `/api/overlay-check/${currentVideo.name}`
-      const checkRes = await fetch(checkUrl)
-      const checkData = await checkRes.json()
-
-      if (checkData.exists) {
-        // 이미 존재하면 바로 오버레이 모드 ON
-        setViewingOverlay(true)
-      } else {
-        // 없으면 생성
-        setOverlayGenerating(true)
-        const genRes = await fetch('/api/overlay-generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            video_name: currentVideo.name,
-            opacity: 0.5,
-            mask_source: selectedMaskSource
-          })
-        })
-        const genData = await genRes.json()
-
-        if (genData.status === 'processing') {
-          console.log('Overlay generation started in background, polling for status...')
-
-          let isCompleted = false
-          let retries = 0
-          const maxRetries = 400 // 최대 10분 대기 (400 * 1.5초)
-          const baseStatusUrl = selectedMaskSource
-            ? `/api/conversion-status/${currentVideo.name}?mask_source=${selectedMaskSource}`
-            : `/api/conversion-status/${currentVideo.name}`
-          const statusUrl = baseStatusUrl.replace('/conversion-status/', '/conversion-status/overlay_')
-
-          while (!isCompleted && retries < maxRetries) {
-            await new Promise(r => setTimeout(r, 1500))
-
-            const statusRes = await fetch(statusUrl)
-            const statusData = await statusRes.json()
-
-            if (statusData.status === 'completed') {
-              console.log('Overlay generated successfully')
-              setViewingOverlay(true)
-              isCompleted = true
-            } else if (statusData.status === 'failed' || statusData.status === 'unknown') {
-              console.error('Overlay background generation failed:', statusData.error)
-              alert('오버레이 생성 실패: ' + (statusData.error || 'Unknown error'))
-              isCompleted = true
-            }
-            retries++
-          }
-
-          if (retries >= maxRetries) {
-            console.error('Overlay prepare polling timed out')
-            alert('오버레이 처리 시간 초과')
-          }
-        } else if (genData.success && genData.status !== 'processing') {
-          setViewingOverlay(true)
-        } else {
-          alert('오버레이 생성 시작 실패: ' + (genData.error || 'Unknown error'))
-        }
-        setOverlayGenerating(false)
-      }
-    } catch (err) {
-      setOverlayGenerating(false)
-      console.error('Overlay toggle error:', err)
-      alert('오버레이 처리 중 오류가 발생했습니다.')
-    }
-  }
-
   const handleMetadataLoaded = (meta) => {
     setVideoMeta(meta)
   }
 
   const handleTimeUpdate = (time) => {
-    setCurrentFrame(Math.floor(time * videoMeta.fps))
+    const fps = videoMeta.fps || 30
+    const frameCount = videoMeta.frameCount || 0
+    let frame = Math.floor(time * fps)
+    
+    // 마지막 프레임 버그 해결: 전체 프레임 수 - 1 을 넘지 않도록
+    if (frameCount > 0 && frame >= frameCount) {
+      frame = frameCount - 1
+    }
+    
+    setCurrentFrame(Math.max(0, frame))
   }
 
   // 평가 결과 설정 (O/X 클릭 시 프레임 기록 유지)
@@ -608,56 +569,82 @@ function AppContent() {
   }
 
   return (
-    <div className="app-container">
-      <ControlPanel
-        videos={videos}
-        currentVideo={currentVideo}
-        currentFrame={currentFrame}
-        frameCount={videoMeta.frameCount}
-        fps={videoMeta.fps}
-        viewingMosaic={viewingMosaic}
-        mosaicGenerating={mosaicGenerating}
-        viewingOverlay={viewingOverlay}
-        overlayGenerating={overlayGenerating}
-        maskSources={maskSources}
-        selectedMaskSource={pendingMaskSource || selectedMaskSource}
-        maskSourceLoading={maskSourceLoading}
-        onMaskSourceChange={handleMaskSourceChange}
-        onVideoSelect={handleVideoSelect}
-        onPrevVideo={handlePrevVideo}
-        onNextVideo={handleNextVideo}
-        onSeekFrames={handleSeekFrames}
-        onToggleMosaic={handleToggleMosaic}
-        onToggleOverlay={handleToggleOverlay}
-      />
+    <div className="app-container" style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {!user ? (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          backgroundColor: '#fff', fontFamily: 'sans-serif', zIndex: 9999
+        }}>
+          <h1 style={{ marginBottom: '10px', fontSize: '26px', fontWeight: '600' }}>로그인 또는 회원 가입</h1>
+          <p style={{ color: '#666', marginBottom: '40px', fontSize: '15px' }}>더 스마트한 응답, 파일 및 이미지 로드 등을 보관할 수 있습니다.</p>
+          
+          <button 
+            onClick={() => login()} 
+            style={{ 
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '320px', padding: '14px', border: '1px solid #ddd', borderRadius: '24px', 
+              background: '#fff', cursor: 'pointer', fontSize: '15px', fontWeight: '500',
+              marginBottom: '15px', transition: 'box-shadow 0.2s'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)'}
+            onMouseOut={(e) => e.currentTarget.style.boxShadow = 'none'}
+          >
+            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google" style={{ width: 18, marginRight: 15 }} />
+            Google로 계속하기
+          </button>
+        </div>
+      ) : (
+        <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'row' }}>
+          <ControlPanel
+            user={user}
+            onLogout={handleLogout}
+            videos={videos}
+            currentVideo={currentVideo}
+            currentFrame={currentFrame}
+            frameCount={videoMeta.frameCount}
+            fps={videoMeta.fps}
+            viewingMosaic={viewingMosaic}
+            mosaicGenerating={mosaicGenerating}
+            maskSources={maskSources}
+            selectedMaskSource={pendingMaskSource || selectedMaskSource}
+            maskSourceLoading={maskSourceLoading}
+            onMaskSourceChange={handleMaskSourceChange}
+            onVideoSelect={handleVideoSelect}
+            onPrevVideo={handlePrevVideo}
+            onNextVideo={handleNextVideo}
+            onSeekFrames={handleSeekFrames}
+            onToggleMosaic={handleToggleMosaic}
+          />
 
-      <VideoPlayer
-        ref={videoPlayerRef}
-        currentVideo={currentVideo}
-        viewingMosaic={viewingMosaic}
-        viewingOverlay={viewingOverlay}
-        videoPreparing={videoPreparing}
-        selectedMaskSource={selectedMaskSource}
-        videoUrls={videoUrls}
-        onMetadataLoaded={handleMetadataLoaded}
-        onTimeUpdate={handleTimeUpdate}
-        onMaskLoaded={handleMaskLoaded}
-        evaluationHistory={evaluationHistory}
-        onLoadEvaluation={handleLoadEvaluation}
-        onSeekToFrame={handleSeekToFrame}
-      />
+          <VideoPlayer
+            ref={videoPlayerRef}
+            currentVideo={currentVideo}
+            viewingMosaic={viewingMosaic}
+            videoPreparing={videoPreparing}
+            selectedMaskSource={selectedMaskSource}
+            videoUrls={videoUrls}
+            onMetadataLoaded={handleMetadataLoaded}
+            onTimeUpdate={handleTimeUpdate}
+            onMaskLoaded={handleMaskLoaded}
+            evaluationHistory={evaluationHistory}
+            onLoadEvaluation={handleLoadEvaluation}
+            onSeekToFrame={handleSeekToFrame}
+          />
 
-      <EvaluationPanel
-        evaluations={evaluations}
-        onEvaluate={handleEvaluate}
-        onAddFrameRange={handleAddFrameRange}
-        onUpdateFrameRange={handleUpdateFrameRange}
-        onRemoveFrameRange={handleRemoveFrameRange}
-        onSave={handleSave}
-        getCurrentFrame={getCurrentFrame}
-        currentVideoName={currentVideo?.name}
-        isSaving={isSaving}
-      />
+          <EvaluationPanel
+            evaluations={evaluations}
+            onEvaluate={handleEvaluate}
+            onAddFrameRange={handleAddFrameRange}
+            onUpdateFrameRange={handleUpdateFrameRange}
+            onRemoveFrameRange={handleRemoveFrameRange}
+            onSave={handleSave}
+            getCurrentFrame={getCurrentFrame}
+            currentVideoName={currentVideo?.name}
+            isSaving={isSaving}
+          />
+        </div>
+      )}
     </div>
   )
 }

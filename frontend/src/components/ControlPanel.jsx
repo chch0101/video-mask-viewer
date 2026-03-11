@@ -2,6 +2,8 @@ import { memo, useState, useMemo } from 'react'
 import MaskControls from './MaskControls'
 
 const ControlPanel = memo(function ControlPanel({
+  user,
+  onLogout,
   videos,
   currentVideo,
   currentFrame,
@@ -9,8 +11,6 @@ const ControlPanel = memo(function ControlPanel({
   fps,
   viewingMosaic,
   mosaicGenerating,
-  viewingOverlay,
-  overlayGenerating,
   maskSources = [],
   selectedMaskSource,
   maskSourceLoading = false,
@@ -19,8 +19,7 @@ const ControlPanel = memo(function ControlPanel({
   onPrevVideo,
   onNextVideo,
   onSeekFrames,
-  onToggleMosaic,
-  onToggleOverlay
+  onToggleMosaic
 }) {
   const [selectedTask, setSelectedTask] = useState('all')
 
@@ -67,8 +66,31 @@ const ControlPanel = memo(function ControlPanel({
   }
 
   return (
-    <div className="control-panel">
-      <h2>Control Panel</h2>
+    <div className="control-panel" style={{ display: 'flex', flexDirection: 'column', gap: '15px', paddingTop: '15px' }}>
+      {user && (
+        <div style={{ 
+          display: 'flex', alignItems: 'center', gap: '10px', 
+          backgroundColor: '#f8f9fa', padding: '12px', borderRadius: '8px',
+          border: '1px solid #e0e0e0', marginBottom: '5px'
+        }}>
+          {user.picture && <img src={user.picture} alt="profile" style={{ width: 32, height: 32, borderRadius: '50%' }} />}
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+            <span style={{ fontWeight: 'bold', fontSize: '14px', lineHeight: '1.2' }}>{user.name}</span>
+            <span style={{ color: '#666', fontSize: '12px' }}>Saved: {user.saved_count || 0}</span>
+          </div>
+          <button 
+            onClick={onLogout} 
+            style={{ 
+              padding: '6px 10px', cursor: 'pointer', borderRadius: '4px', 
+              border: '1px solid #ccc', background: 'white', fontSize: '12px' 
+            }}
+          >
+            Logout
+          </button>
+        </div>
+      )}
+
+      <h2 style={{ marginTop: 0, marginBottom: '5px' }}>Control Panel</h2>
 
       <div className="control-section">
         <label>Task Filter</label>
@@ -178,7 +200,6 @@ const ControlPanel = memo(function ControlPanel({
         )}
       </div>
 
-
       <div className="control-section">
         <label>Frame Navigation</label>
         <div className="frame-controls">
@@ -214,11 +235,7 @@ const ControlPanel = memo(function ControlPanel({
         viewingMosaic={viewingMosaic}
         mosaicGenerating={mosaicGenerating}
         onToggleMosaic={onToggleMosaic}
-        viewingOverlay={viewingOverlay}
-        overlayGenerating={overlayGenerating}
-        onToggleOverlay={onToggleOverlay}
       />
-
     </div>
   )
 })

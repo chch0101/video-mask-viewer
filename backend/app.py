@@ -20,7 +20,8 @@ CONVERSION_STATUS = {}
 
 from dotenv import load_dotenv
 from utils.system_helpers import show_dialog, show_progress_notification, ensure_ffmpeg
-from utils.video_processing import get_video_codec, get_video_fps, convert_to_h264, sync_mask_to_source
+from utils.video_processing import get_video_codec, get_video_fps, get_video_frame_count, convert_to_h264, sync_mask_to_source
+import database
 
 # .env 파일 로드
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
@@ -97,6 +98,43 @@ def get_s3_presigned_url(key, expiration=3600):
     except Exception as e:
         print(f"[S3] Failed to generate presigned URL: {e}")
         return None
+
+def download_db_from_s3():
+    """앱 시작 시 S3에서 evaluations.db 다운로드 (Railway Volume 초기화 대응)"""
+    if not USE_S3 or not s3_client or not S3_BUCKET:
+        return
+    
+    s3_key = f"{S3_PREFIX}/evaluations.db"
+    local_path = database.DB_PATH
+    
+    # 로컬에 이미 파일이 있으면 굳이 덮어쓰지 않음 (최신 데이터일 확률이 높음)
+    if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+        print(f"[S3-DB] Local DB already exists at {local_path}. Skipping initial download.")
+        return
+
+    try:
+        print(f"[S3-DB] Checking for DB at s3://{S3_BUCKET}/{s3_key}...")
+        s3_client.download_file(S3_BUCKET, s3_key, local_path)
+        print(f"[S3-DB] Initialized DB from S3: {local_path}")
+    except Exception as e:
+        print(f"[S3-DB] No DB found in S3 or download failed: {e}. Starting fresh.")
+
+def upload_db_to_s3():
+    """evaluations.db를 S3로 백업"""
+    if not USE_S3 or not s3_client or not S3_BUCKET:
+        return
+    
+    s3_key = f"{S3_PREFIX}/evaluations.db"
+    local_path = database.DB_PATH
+    
+    if not os.path.exists(local_path):
+        return
+
+    try:
+        s3_client.upload_file(local_path, S3_BUCKET, s3_key)
+        print(f"[S3-DB] Backed up DB to s3://{S3_BUCKET}/{s3_key}")
+    except Exception as e:
+        print(f"[S3-DB] Backup failed: {e}")
 
 
 def s3_file_exists(key):
@@ -593,21 +631,27 @@ def get_video_meta(name):
         return jsonify({'error': 'Video not found'}), 404
 
     source_fps_raw = get_video_fps(source_path)
+    source_frames = get_video_frame_count(source_path)
 
     # 실제로 서빙될 파일의 FPS 확인
     cached_source_path = os.path.join(CACHE_DIR, f"{name}_src30.mp4")
     if abs(source_fps_raw - TARGET_FPS) > 0.5 and os.path.exists(cached_source_path):
         served_source_fps = TARGET_FPS
+        source_frames = get_video_frame_count(cached_source_path)
     else:
         served_source_fps = source_fps_raw
 
     served_mask_fps = TARGET_FPS  # 기본값
     mask_fps_raw = source_fps_raw # 마스크 없을 때 대비
+    mask_frames = source_frames   # 마스크 없을 때 대비
+    
     if os.path.exists(mask_path):
         mask_fps_raw = get_video_fps(mask_path)
+        mask_frames = get_video_frame_count(mask_path)
         cached_mask_path = os.path.join(CACHE_DIR, f"{name}_mask30.mp4")
         if abs(mask_fps_raw - TARGET_FPS) > 0.5 and os.path.exists(cached_mask_path):
             served_mask_fps = TARGET_FPS
+            mask_frames = get_video_frame_count(cached_mask_path)
         else:
             served_mask_fps = mask_fps_raw
 
@@ -615,8 +659,51 @@ def get_video_meta(name):
         'fps': source_fps_raw,           # 원본 프레임 번호 기준 (CSV 매칭용)
         'rawFps': source_fps_raw,
         'sourceFps': served_source_fps,  # 실제 브라우저 재생 FPS
-        'maskFps': served_mask_fps       # 실제 브라우저 재생 FPS
+        'maskFps': served_mask_fps,      # 실제 브라우저 재생 FPS
+        'totalFrames': source_frames,    # 전체 프레임 수
+        'maskFrames': mask_frames        # 마스크 전체 프레임 수 (동기화 확인용)
     })
+
+@app.route('/api/auth/google', methods=['POST'])
+def auth_google():
+    """Google OAuth2 Token Verify"""
+    data = request.json
+    credential = data.get('credential')
+    if not credential:
+        return jsonify({'error': 'Missing credential'}), 400
+    
+    import urllib.request
+    import json
+    try:
+        req = urllib.request.Request(
+            'https://www.googleapis.com/oauth2/v3/userinfo',
+            headers={'Authorization': f'Bearer {credential}'}
+        )
+        with urllib.request.urlopen(req) as response:
+            user_info = json.loads(response.read().decode())
+        
+        user_id = user_info.get('sub')
+        email = user_info.get('email')
+        name = user_info.get('name')
+        picture = user_info.get('picture')
+        
+        import database
+        database.upsert_user(user_id, email, name, picture)
+        count = database.get_user_evaluation_count(user_id)
+        
+        return jsonify({
+            'success': True,
+            'user': {
+                'id': user_id,
+                'email': email,
+                'name': name,
+                'picture': picture,
+                'saved_count': count
+            }
+        })
+    except Exception as e:
+        print(f"Error handling Google Login: {e}")
+        return jsonify({'error': str(e)}), 400
 
 
 @app.route('/api/evaluations', methods=['POST'])
@@ -681,6 +768,13 @@ def save_evaluation():
         s3_filename = f"evaluations/{mask_source}/{task_name}/{filename}" if mask_source else f"evaluations/{task_name}/{filename}"
         s3_key = f"{S3_PREFIX}/{s3_filename}"
         upload_to_s3(filepath, s3_key)
+
+    # SQLite DB에 로그 기록
+    user_info = data.get('user')
+    if user_info and user_info.get('id'):
+        database.log_evaluation(user_info['id'], video_name, mask_source, filename)
+        # DB 저장 후 즉시 S3 백업 (기기/세션 간 공유 및 안전한 보관)
+        upload_db_to_s3()
 
     return jsonify({
         'success': True,
@@ -1653,6 +1747,12 @@ if __name__ == '__main__':
 
     # ffmpeg 자동 설치 확인
     ensure_ffmpeg()
+
+    # S3에서 초기 DB 다운로드
+    download_db_from_s3()
+    
+    # DB 초기화 (테이블 생성 등)
+    database.init_db()
 
     # 번들 모드에서는 자동으로 브라우저 열기
     if getattr(sys, 'frozen', False):
