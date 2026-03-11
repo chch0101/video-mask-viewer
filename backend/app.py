@@ -666,7 +666,7 @@ def get_video_meta(name):
 
 @app.route('/api/auth/google', methods=['POST'])
 def auth_google():
-    """Google OAuth2 Token Verify"""
+    """Google OAuth2 Token Verify (Supports Access Token and ID Token)"""
     data = request.json
     credential = data.get('credential')
     if not credential:
@@ -675,18 +675,38 @@ def auth_google():
     import urllib.request
     import json
     try:
-        req = urllib.request.Request(
-            'https://www.googleapis.com/oauth2/v3/userinfo',
-            headers={'Authorization': f'Bearer {credential}'}
-        )
-        with urllib.request.urlopen(req) as response:
-            user_info = json.loads(response.read().decode())
+        # try tokeninfo for ID Token or Access Token verification
+        # id_token or access_token can be verified via this endpoint
+        verify_url = f'https://oauth2.googleapis.com/tokeninfo?id_token={credential}'
         
-        user_id = user_info.get('sub')
+        try:
+            req = urllib.request.Request(verify_url)
+            with urllib.request.urlopen(req) as response:
+                user_info = json.loads(response.read().decode())
+        except Exception:
+            # Fallback to access_token verification if id_token failed
+            verify_url = f'https://oauth2.googleapis.com/tokeninfo?access_token={credential}'
+            req = urllib.request.Request(verify_url)
+            with urllib.request.urlopen(req) as response:
+                user_info = json.loads(response.read().decode())
+
+        # If still no user_info, try userinfo endpoint (legacy)
+        if not user_info.get('sub') and not user_info.get('user_id'):
+            req = urllib.request.Request(
+                'https://www.googleapis.com/oauth2/v3/userinfo',
+                headers={'Authorization': f'Bearer {credential}'}
+            )
+            with urllib.request.urlopen(req) as response:
+                user_info = json.loads(response.read().decode())
+        
+        user_id = user_info.get('sub') or user_info.get('user_id')
         email = user_info.get('email')
-        name = user_info.get('name')
+        name = user_info.get('name') or email.split('@')[0] if email else "User"
         picture = user_info.get('picture')
         
+        if not user_id:
+            return jsonify({'error': 'Invalid token: No user ID found'}), 400
+
         import database
         database.upsert_user(user_id, email, name, picture)
         count = database.get_user_evaluation_count(user_id)

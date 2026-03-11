@@ -3,7 +3,7 @@ import ControlPanel from './components/ControlPanel'
 import VideoPlayer from './components/VideoPlayer'
 import EvaluationPanel from './components/EvaluationPanel'
 import { MaskProvider, useMask } from './contexts/MaskContext'
-import { useGoogleLogin, googleLogout } from '@react-oauth/google'
+import { GoogleLogin, googleLogout } from '@react-oauth/google'
 
 const initialEvaluations = {
   Q1: { result: null, frameRanges: [] },
@@ -44,28 +44,25 @@ function AppContent() {
   const videoPlayerRef = useRef(null)
   const maskSourceDebounceRef = useRef(null)
 
-  // Google Login Hook
-  const login = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      try {
-        const res = await fetch('/api/auth/google', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ credential: tokenResponse.access_token || tokenResponse.credential })
-        })
-        const data = await res.json()
-        if (data.success && data.user) {
-          setUser(data.user)
-          localStorage.setItem('vmask_user', JSON.stringify(data.user))
-        } else {
-          console.error("Login failed on backend", data)
-        }
-      } catch (err) {
-        console.error("Error during authentication", err)
+  // Google Login Success Handler
+  const handleLoginSuccess = async (credentialResponse) => {
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: credentialResponse.credential })
+      })
+      const data = await res.json()
+      if (data.success && data.user) {
+        setUser(data.user)
+        localStorage.setItem('vmask_user', JSON.stringify(data.user))
+      } else {
+        console.error("Login failed on backend", data)
       }
-    },
-    onError: errorResponse => console.log(errorResponse),
-  });
+    } catch (err) {
+      console.error("Error during authentication", err)
+    }
+  }
 
   const handleLogout = () => {
     googleLogout()
@@ -509,20 +506,16 @@ function AppContent() {
           <h1 style={{ marginBottom: '10px', fontSize: '26px', fontWeight: '600' }}>로그인 또는 회원 가입</h1>
           <p style={{ color: '#666', marginBottom: '40px', fontSize: '15px' }}>더 스마트한 응답, 파일 및 이미지 로드 등을 보관할 수 있습니다.</p>
           
-          <button 
-            onClick={() => login()} 
-            style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: '320px', padding: '14px', border: '1px solid #ddd', borderRadius: '24px', 
-              background: '#fff', cursor: 'pointer', fontSize: '15px', fontWeight: '500',
-              marginBottom: '15px', transition: 'box-shadow 0.2s'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)'}
-            onMouseOut={(e) => e.currentTarget.style.boxShadow = 'none'}
-          >
-            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google" style={{ width: 18, marginRight: 15 }} />
-            Google로 계속하기
-          </button>
+          <div style={{ width: '320px', display: 'flex', justifyContent: 'center' }}>
+            <GoogleLogin
+              onSuccess={handleLoginSuccess}
+              onError={() => console.log('Login Failed')}
+              theme="outline"
+              shape="pill"
+              width="320px"
+              locale="ko"
+            />
+          </div>
         </div>
       ) : (
         <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'row' }}>
