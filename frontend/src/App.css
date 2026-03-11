@@ -1015,3 +1015,262 @@ select {
   border-color: rgba(255, 193, 7, 0.3);
   border-top-color: #ffc107;
 }
+
+/* ===== MOBILE RESPONSIVE STYLES ===== */
+@media (max-width: 768px) {
+  /* 전체 레이아웃을 세로로 변경 */
+  .app-container {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  /* 모바일 탭 네비게이션 */
+  .mobile-tab-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border-top: 1px solid #e0e0e0;
+    z-index: 1000;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  }
+
+  .mobile-tab-btn {
+    flex: 1;
+    padding: 12px 8px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    color: #666;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s;
+  }
+
+  .mobile-tab-btn.active {
+    color: #1976d2;
+    background: #e3f2fd;
+  }
+
+  .mobile-tab-icon {
+    font-size: 20px;
+  }
+
+  /* Control Panel 모바일 스타일 */
+  .control-panel {
+    width: 100% !important;
+    border-right: none;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 15px;
+    padding-bottom: 80px; /* 탭 네비게이션 공간 확보 */
+  }
+
+  /* Main Content 모바일 스타일 */
+  .main-content {
+    padding: 15px;
+    padding-bottom: 80px;
+  }
+
+  /* Video Container 모바일 */
+  .video-container {
+    max-width: 100%;
+    width: 100%;
+    border-radius: 0;
+  }
+
+  .video-controls {
+    max-width: 100%;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .speed-controls {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  /* Evaluation Panel 모바일 스타일 */
+  .evaluation-panel {
+    width: 100% !important;
+    border-left: none;
+    border-top: 1px solid #e0e0e0;
+    padding: 15px;
+    padding-bottom: 80px;
+  }
+
+  /* 터치 친화적 버튼 크기 */
+  .eval-btn {
+    padding: 14px 20px;
+    font-size: 16px;
+    min-height: 48px;
+  }
+
+  .nav-buttons button {
+    padding: 14px;
+    font-size: 14px;
+    min-height: 48px;
+  }
+
+  .frame-controls button {
+    width: 48px;
+    height: 48px;
+    font-size: 18px;
+  }
+
+  .task-filter-btn {
+    padding: 10px 16px;
+    font-size: 14px;
+    min-height: 44px;
+  }
+
+  /* 입력 필드 크기 확대 */
+  select {
+    padding: 12px 16px;
+    font-size: 16px;
+    min-height: 48px;
+  }
+
+  .frame-input {
+    width: 70px;
+    padding: 10px 12px;
+    font-size: 16px;
+  }
+
+  /* 프레임 범위 행 모바일 */
+  .frame-range-row {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .frame-action-btn {
+    padding: 10px 14px;
+    font-size: 14px;
+    min-height: 44px;
+  }
+
+  .add-range-btn {
+    padding: 12px 16px;
+    font-size: 14px;
+    min-height: 48px;
+    width: 100%;
+  }
+
+  /* 저장 버튼 모바일 */
+  .save-btn {
+    padding: 16px;
+    font-size: 16px;
+    min-height: 52px;
+  }
+
+  /* 재생 버튼 모바일 */
+  .play-btn {
+    width: 52px;
+    height: 52px;
+    font-size: 20px;
+  }
+
+  /* 속도 버튼 모바일 */
+  .speed-btn {
+    padding: 10px 16px;
+    font-size: 14px;
+    min-height: 44px;
+  }
+
+  /* 오버레이/모자이크 버튼 모바일 */
+  .overlay-toggle-btn,
+  .mosaic-toggle-btn {
+    padding: 14px 18px;
+    font-size: 15px;
+    min-height: 52px;
+  }
+
+  /* 평가 기록 모바일 */
+  .evaluation-history {
+    max-width: 100%;
+  }
+
+  .evaluation-history ul {
+    max-height: 200px;
+  }
+
+  /* Info Box 모바일 */
+  .info-box {
+    padding: 12px;
+    font-size: 14px;
+  }
+
+  /* 단축키 힌트 모바일 - 숨김 (터치 기기에서 불필요) */
+  .shortcut-hint {
+    display: none;
+  }
+
+  /* 질문 텍스트 가독성 */
+  .eval-question {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .eval-section h3 {
+    font-size: 16px;
+  }
+
+  /* 마스크 컨트롤 모바일 */
+  .mask-controls {
+    padding: 12px;
+  }
+
+  .mask-toggle {
+    flex-wrap: wrap;
+  }
+
+  /* 로그인 화면 모바일 */
+  .login-container {
+    padding: 20px;
+  }
+
+  .login-container h1 {
+    font-size: 22px;
+  }
+}
+
+/* 아주 작은 화면 (가로 400px 이하) */
+@media (max-width: 400px) {
+  .frame-controls button {
+    width: 44px;
+    height: 44px;
+    font-size: 16px;
+  }
+
+  .task-filter-btn {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .frame-input {
+    width: 60px;
+  }
+
+  .frame-action-btn {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+}
+
+/* 데스크톱에서는 모바일 탭 숨기기 */
+@media (min-width: 769px) {
+  .mobile-tab-nav {
+    display: none;
+  }
+
+  .mobile-only {
+    display: none;
+  }
+}

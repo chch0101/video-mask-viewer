@@ -31,6 +31,8 @@ function AppContent() {
   const [pendingMaskSource, setPendingMaskSource] = useState('') // UI용 즉시 반영
   const [maskSourceLoading, setMaskSourceLoading] = useState(false)
   const [videoUrls, setVideoUrls] = useState({})
+  const [mobileActiveTab, setMobileActiveTab] = useState('video') // 모바일 탭 상태
+  const [isMobile, setIsMobile] = useState(false) // 모바일 감지
   const [user, setUser] = useState(() => {
     try {
       const saved = localStorage.getItem('vmask_user')
@@ -322,6 +324,16 @@ function AppContent() {
 
   // ===== useEffect hooks =====
 
+  // 모바일 감지
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   // 초기 로드: mask sources를 로드
   useEffect(() => {
     fetchMaskSources()
@@ -523,54 +535,94 @@ function AppContent() {
           </div>
         </div>
       ) : (
-        <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'row' }}>
-          <ControlPanel
-            user={user}
-            onLogout={handleLogout}
-            videos={videos}
-            currentVideo={currentVideo}
-            currentFrame={currentFrame}
-            frameCount={videoMeta.frameCount}
-            fps={videoMeta.fps}
-            viewingMosaic={viewingMosaic}
-            mosaicGenerating={mosaicGenerating}
-            maskSources={maskSources}
-            selectedMaskSource={pendingMaskSource || selectedMaskSource}
-            maskSourceLoading={maskSourceLoading}
-            onMaskSourceChange={handleMaskSourceChange}
-            onVideoSelect={handleVideoSelect}
-            onPrevVideo={handlePrevVideo}
-            onNextVideo={handleNextVideo}
-            onSeekFrames={handleSeekFrames}
-            onToggleMosaic={handleToggleMosaic}
-          />
+        <div style={{
+          position: 'relative',
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row'
+        }}>
+          {/* 모바일: 선택된 탭만 표시 / 데스크톱: 모두 표시 */}
+          {(!isMobile || mobileActiveTab === 'control') && (
+            <ControlPanel
+              user={user}
+              onLogout={handleLogout}
+              videos={videos}
+              currentVideo={currentVideo}
+              currentFrame={currentFrame}
+              frameCount={videoMeta.frameCount}
+              fps={videoMeta.fps}
+              viewingMosaic={viewingMosaic}
+              mosaicGenerating={mosaicGenerating}
+              maskSources={maskSources}
+              selectedMaskSource={pendingMaskSource || selectedMaskSource}
+              maskSourceLoading={maskSourceLoading}
+              onMaskSourceChange={handleMaskSourceChange}
+              onVideoSelect={handleVideoSelect}
+              onPrevVideo={handlePrevVideo}
+              onNextVideo={handleNextVideo}
+              onSeekFrames={handleSeekFrames}
+              onToggleMosaic={handleToggleMosaic}
+            />
+          )}
 
-          <VideoPlayer
-            ref={videoPlayerRef}
-            currentVideo={currentVideo}
-            viewingMosaic={viewingMosaic}
-            videoPreparing={videoPreparing}
-            selectedMaskSource={selectedMaskSource}
-            videoUrls={videoUrls}
-            onMetadataLoaded={handleMetadataLoaded}
-            onTimeUpdate={handleTimeUpdate}
-            onMaskLoaded={handleMaskLoaded}
-            evaluationHistory={evaluationHistory}
-            onLoadEvaluation={handleLoadEvaluation}
-            onSeekToFrame={handleSeekToFrame}
-          />
+          {(!isMobile || mobileActiveTab === 'video') && (
+            <VideoPlayer
+              ref={videoPlayerRef}
+              currentVideo={currentVideo}
+              viewingMosaic={viewingMosaic}
+              videoPreparing={videoPreparing}
+              selectedMaskSource={selectedMaskSource}
+              videoUrls={videoUrls}
+              onMetadataLoaded={handleMetadataLoaded}
+              onTimeUpdate={handleTimeUpdate}
+              onMaskLoaded={handleMaskLoaded}
+              evaluationHistory={evaluationHistory}
+              onLoadEvaluation={handleLoadEvaluation}
+              onSeekToFrame={handleSeekToFrame}
+            />
+          )}
 
-          <EvaluationPanel
-            evaluations={evaluations}
-            onEvaluate={handleEvaluate}
-            onAddFrameRange={handleAddFrameRange}
-            onUpdateFrameRange={handleUpdateFrameRange}
-            onRemoveFrameRange={handleRemoveFrameRange}
-            onSave={handleSave}
-            getCurrentFrame={getCurrentFrame}
-            currentVideoName={currentVideo?.name}
-            isSaving={isSaving}
-          />
+          {(!isMobile || mobileActiveTab === 'evaluate') && (
+            <EvaluationPanel
+              evaluations={evaluations}
+              onEvaluate={handleEvaluate}
+              onAddFrameRange={handleAddFrameRange}
+              onUpdateFrameRange={handleUpdateFrameRange}
+              onRemoveFrameRange={handleRemoveFrameRange}
+              onSave={handleSave}
+              getCurrentFrame={getCurrentFrame}
+              currentVideoName={currentVideo?.name}
+              isSaving={isSaving}
+            />
+          )}
+
+          {/* 모바일 하단 탭 네비게이션 */}
+          {isMobile && (
+            <nav className="mobile-tab-nav">
+              <button
+                className={`mobile-tab-btn ${mobileActiveTab === 'control' ? 'active' : ''}`}
+                onClick={() => setMobileActiveTab('control')}
+              >
+                <span className="mobile-tab-icon">⚙️</span>
+                <span>설정</span>
+              </button>
+              <button
+                className={`mobile-tab-btn ${mobileActiveTab === 'video' ? 'active' : ''}`}
+                onClick={() => setMobileActiveTab('video')}
+              >
+                <span className="mobile-tab-icon">▶️</span>
+                <span>비디오</span>
+              </button>
+              <button
+                className={`mobile-tab-btn ${mobileActiveTab === 'evaluate' ? 'active' : ''}`}
+                onClick={() => setMobileActiveTab('evaluate')}
+              >
+                <span className="mobile-tab-icon">✅</span>
+                <span>평가</span>
+              </button>
+            </nav>
+          )}
         </div>
       )}
     </div>
