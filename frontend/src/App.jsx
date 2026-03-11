@@ -142,38 +142,157 @@ function AppContent() {
     }
   }, [])
 
-  // 초기 로드: mask sources를 먼저 로드하고, 첫 번째 mask source로 비디오 목록 로드
-  useEffect(() => {
-    const init = async () => {
-      // 1. mask sources 로드
-      await fetchMaskSources()
-    }
-    init()
-  }, [])
+  const handleVideoSelect = useCallback(async (videoName) => {
+    const video = videos.find(v => v.name === videoName)
+    if (video) {
+      setViewingMosaic(false)
+      setVideoPreparing(true)
+      setCurrentFrame(0)
+      setVideoMeta({ fps: 30, frameCount: 0 })
 
-  // mask sources 로드 후 첫 번째를 기본값으로 설정하고 비디오 목록 로드
-  useEffect(() => {
-    if (maskSources.length > 0 && !selectedMaskSource) {
-      const firstSource = maskSources[0].name
-      setSelectedMaskSource(firstSource)
-      setPendingMaskSource(firstSource)
-      // 첫 번째 mask source로 비디오 목록 로드
-      fetchVideos(firstSource).then(vids => {
-        if (vids.length > 0) {
-          handleVideoSelect(vids[0].name)
+      try {
+        const res = await fetch('/api/prepare-video/' + videoName, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mask_source: selectedMaskSource })
+        })
+        const data = await res.json()
+
+        if (data.status === 'processing') {
+          let isCompleted = false
+          let retries = 0
+          const maxRetries = 120
+          while (!isCompleted && retries < maxRetries) {
+            await new Promise(r => setTimeout(r, 1500))
+            const statusUrl = selectedMaskSource
+              ? `/api/conversion-status/${videoName}?mask_source=${selectedMaskSource}`
+              : `/api/conversion-status/${videoName}`
+            const statusRes = await fetch(statusUrl)
+            const statusData = await statusRes.json()
+            if (statusData.status === 'completed') {
+              isCompleted = true
+            } else if (statusData.status === 'failed' || statusData.status === 'unknown') {
+              isCompleted = true
+            }
+            retries++
+          }
         }
-      })
-    }
-  }, [maskSources])
-
-  // 컴포넌트 언마운트 시 디바운스 타이머 정리
-  useEffect(() => {
-    return () => {
-      if (maskSourceDebounceRef.current) {
-        clearTimeout(maskSourceDebounceRef.current)
+      } catch (err) {
+        console.error('Video prepare request failed:', err)
       }
+
+      try {
+        const urlParams = selectedMaskSource ? `?mask_source=${selectedMaskSource}` : ''
+        const urlRes = await fetch(`/api/video-urls/${videoName}${urlParams}`)
+        const urlData = await urlRes.json()
+        setVideoUrls(urlData)
+      } catch (err) {
+        console.error('Failed to fetch video URLs:', err)
+        setVideoUrls({})
+      }
+
+      setVideoPreparing(false)
+      setCurrentVideo(video)
     }
+  }, [videos, selectedMaskSource])
+
+  const handleSave = useCallback(async () => {
+    if (!currentVideo) return
+
+    setIsSaving(true)
+    try {
+      const response = await fetch('/api/evaluations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_name: currentVideo.name,
+          evaluations: evaluations,
+          mask_source: selectedMaskSource,
+          user: user
+        })
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        await fetchVideos(selectedMaskSource)
+        await fetchEvaluationHistory(currentVideo.name, selectedMaskSource)
+
+        if (user) {
+          const updatedUser = { ...user, saved_count: (user.saved_count || 0) + 1 }
+          setUser(updatedUser)
+          localStorage.setItem('vmask_user', JSON.stringify(updatedUser))
+        }
+
+        const currentIndex = videos.findIndex(v => v.name === currentVideo?.name)
+        if (currentIndex < videos.length - 1) {
+          handleVideoSelect(videos[currentIndex + 1].name)
+        } else {
+          alert('모든 비디오의 평가가 완료되었습니다! 🎉')
+        }
+      } else {
+        alert('저장 실패: ' + (data.error || 'Unknown error'))
+      }
+    } catch (err) {
+      console.error('Save error:', err)
+      alert('저장 중 오류가 발생했습니다.')
+    } finally {
+      setIsSaving(false)
+    }
+  }, [currentVideo, evaluations, selectedMaskSource, videos, fetchVideos, fetchEvaluationHistory, user, handleVideoSelect])
+
+  const handleToggleMosaic = useCallback(async () => {
+    if (viewingMosaic) {
+      setViewingMosaic(false)
+      return
+    }
+    if (!currentVideo) return
+    try {
+      const checkUrl = selectedMaskSource
+        ? `/api/mosaic-check/${currentVideo.name}?mask_source=${selectedMaskSource}`
+        : `/api/mosaic-check/${currentVideo.name}`
+      const checkRes = await fetch(checkUrl)
+      const checkData = await checkRes.json()
+
+      if (checkData.exists) {
+        setViewingMosaic(true)
+      } else {
+        setMosaicGenerating(true)
+        const genUrl = selectedMaskSource
+          ? `/api/generate-mosaic/${currentVideo.name}?mask_source=${selectedMaskSource}`
+          : `/api/generate-mosaic/${currentVideo.name}`
+        const genRes = await fetch(genUrl, { method: 'POST' })
+        const genData = await genRes.json()
+
+        if (genData.status === 'processing' || genData.success) {
+          if (videoPlayerRef.current) {
+            const success = await videoPlayerRef.current.prepareMosaic()
+            if (success) setViewingMosaic(true)
+          }
+        } else {
+          alert('모자이크 생성 시작 실패: ' + (genData.error || 'Unknown error'))
+        }
+        setMosaicGenerating(false)
+      }
+    } catch (err) {
+      setMosaicGenerating(false)
+      console.error('Mosaic toggle error:', err)
+      alert('모자이크 처리 중 오류가 발생했습니다.')
+    }
+  }, [viewingMosaic, currentVideo, selectedMaskSource])
+
+  const handleMetadataLoaded = useCallback((meta) => {
+    setVideoMeta(meta)
   }, [])
+
+  const handleTimeUpdate = useCallback((time) => {
+    const fps = videoMeta.fps || 30
+    const frameCount = videoMeta.frameCount || 0
+    let frame = Math.floor(time * fps + 0.001) 
+    if (frameCount > 0 && frame >= frameCount) {
+      frame = frameCount - 1
+    }
+    setCurrentFrame(Math.max(0, frame))
+  }, [videoMeta])
 
   // mask source 변경 시 overlay 상태 초기화 (디바운스 적용)
   const handleMaskSourceChange = (source) => {
@@ -199,31 +318,30 @@ function AppContent() {
     setMaskSourceLoading(false)
   }
 
-  // 비디오 변경 또는 mask_source 변경 시 평가 기록 로드 + 최신 평가 자동 불러오기
-  useEffect(() => {
-    if (currentVideo?.name) {
-      fetchEvaluationHistory(currentVideo.name, selectedMaskSource)
-    }
-  }, [currentVideo?.name, selectedMaskSource, fetchEvaluationHistory])
+  // ===== useEffect hooks =====
 
-  // mask_source 변경 시 비디오 목록도 갱신 (평가 상태 반영) + S3 URL 갱신
+  // 초기 로드: mask sources를 로드
   useEffect(() => {
-    if (selectedMaskSource) {
-      fetchVideos(selectedMaskSource)
-      // mask source 변경 시 현재 비디오의 S3 URL도 갱신
-      if (currentVideo?.name) {
-        fetch(`/api/video-urls/${currentVideo.name}?mask_source=${selectedMaskSource}`)
-          .then(res => res.json())
-          .then(data => setVideoUrls(data))
-          .catch(() => setVideoUrls({}))
-      }
+    fetchMaskSources()
+  }, [fetchMaskSources])
+
+  // mask sources 로드 후 첫 번째를 기본값으로 설정하고 비디오 목록 로드
+  useEffect(() => {
+    if (maskSources.length > 0 && !selectedMaskSource) {
+      const firstSource = maskSources[0].name
+      setSelectedMaskSource(firstSource)
+      setPendingMaskSource(firstSource)
+      fetchVideos(firstSource).then(vids => {
+        if (vids.length > 0) {
+          handleVideoSelect(vids[0].name)
+        }
+      })
     }
-  }, [selectedMaskSource, fetchVideos, currentVideo?.name])
+  }, [maskSources, selectedMaskSource, fetchVideos, handleVideoSelect])
 
   // 키보드 단축키
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Ctrl+S / Cmd+S: CSV 저장 (어디서든 동작)
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
         e.preventDefault()
         if (currentVideo && !isSaving) {
@@ -234,13 +352,11 @@ function AppContent() {
 
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return
 
-      // Tab: 마스크 on/off 토글
       if (e.code === 'Tab') {
         e.preventDefault()
         toggleMask()
       }
 
-      // M: 모자이크 on/off 토글
       if (e.code === 'KeyM') {
         e.preventDefault()
         if (currentVideo) {
@@ -248,13 +364,11 @@ function AppContent() {
         }
       }
 
-      // Space: 영상 재생/멈춤
       if (e.code === 'Space') {
         e.preventDefault()
         videoPlayerRef.current?.togglePlay()
       }
 
-      // 좌우 화살표 - Shift+화살표: 30프레임, 화살표만: 1프레임
       if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
         e.preventDefault()
         const direction = e.code === 'ArrowLeft' ? -1 : 1
@@ -262,7 +376,6 @@ function AppContent() {
         videoPlayerRef.current?.seekFrames(direction * frames)
       }
     }
-
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [currentVideo, isSaving, handleSave, toggleMask, handleToggleMosaic])
