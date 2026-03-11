@@ -325,6 +325,27 @@ function AppContent() {
     fetchMaskSources()
   }, [fetchMaskSources])
 
+  // 비디오 변경 또는 mask_source 변경 시 평가 기록 로드 + 최신 평가 자동 불러오기
+  useEffect(() => {
+    if (currentVideo?.name) {
+      fetchEvaluationHistory(currentVideo.name, selectedMaskSource)
+    }
+  }, [currentVideo?.name, selectedMaskSource, fetchEvaluationHistory])
+
+  // mask_source 변경 시 비디오 목록도 갱신 (평가 상태 반영) + S3 URL 갱신
+  useEffect(() => {
+    if (selectedMaskSource) {
+      fetchVideos(selectedMaskSource)
+      // mask source 변경 시 현재 비디오의 S3 URL도 갱신
+      if (currentVideo?.name) {
+        fetch(`/api/video-urls/${currentVideo.name}?mask_source=${selectedMaskSource}`)
+          .then(res => res.json())
+          .then(data => setVideoUrls(data))
+          .catch(() => setVideoUrls({}))
+      }
+    }
+  }, [selectedMaskSource, fetchVideos, currentVideo?.name])
+
   // mask sources 로드 후 첫 번째를 기본값으로 설정하고 비디오 목록 로드
   useEffect(() => {
     if (maskSources.length > 0 && !selectedMaskSource) {
