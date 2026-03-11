@@ -367,6 +367,88 @@ def process_all_videos(task: str = None, block_size: int = 15,
     print(f"\n전체 완료! 총 소요 시간: {total_elapsed:.1f}초")
 
 
+def process_batch(mask_source: str = "rexomni", block_size: int = 15,
+                  num_workers: int = DEFAULT_WORKERS, batch_size: int = DEFAULT_BATCH,
+                  use_contour: bool = True):
+    """
+    video/source의 모든 영상을 video/masks/{mask_source}와 매칭하여
+    video/result에 모자이크 처리 후 저장 (H.264 코덱)
+    - source에 있지만 mask에 없는 영상은 스킵
+    """
+    result_dir = BASE_DIR / "video" / "result"
+    masks_dir = BASE_DIR / "video" / "masks" / mask_source
+
+    if not SOURCE_DIR.exists():
+        print(f"소스 폴더가 없습니다: {SOURCE_DIR}")
+        return
+
+    if not masks_dir.exists():
+        print(f"마스크 폴더가 없습니다: {masks_dir}")
+        return
+
+    # 소스 폴더의 모든 mp4 파일 스캔
+    source_files = sorted(SOURCE_DIR.glob("*.mp4"))
+
+    if not source_files:
+        print("처리할 소스 파일이 없습니다.")
+        return
+
+    # 마스크가 있는 파일만 필터링
+    pairs = []
+    skipped = []
+    for source_path in source_files:
+        mask_path = masks_dir / source_path.name
+        if mask_path.exists():
+            pairs.append({
+                'source': str(source_path),
+                'mask': str(mask_path),
+                'output': str(result_dir / source_path.name)
+            })
+        else:
+            skipped.append(source_path.name)
+
+    print(f"=== 배치 처리 시작 ===")
+    print(f"소스 폴더: {SOURCE_DIR}")
+    print(f"마스크 폴더: {masks_dir}")
+    print(f"결과 폴더: {result_dir}")
+    print(f"처리할 영상: {len(pairs)}개")
+    print(f"스킵 (마스크 없음): {len(skipped)}개")
+
+    if skipped:
+        print(f"\n스킵된 영상: {', '.join(skipped[:5])}{'...' if len(skipped) > 5 else ''}")
+
+    if not pairs:
+        print("처리할 영상이 없습니다.")
+        return
+
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    total_start = time.time()
+    success_count = 0
+    fail_count = 0
+
+    for i, pair in enumerate(pairs, 1):
+        print(f"\n[{i}/{len(pairs)}]")
+        try:
+            result = process_video(
+                pair['source'], pair['mask'], pair['output'],
+                block_size, use_contour=use_contour,
+                num_workers=num_workers, batch_size=batch_size
+            )
+            if result:
+                success_count += 1
+            else:
+                fail_count += 1
+        except Exception as e:
+            print(f"  에러: {e}")
+            fail_count += 1
+
+    total_elapsed = time.time() - total_start
+    print(f"\n=== 배치 처리 완료 ===")
+    print(f"성공: {success_count}개, 실패: {fail_count}개")
+    print(f"총 소요 시간: {total_elapsed:.1f}초")
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -374,14 +456,16 @@ if __name__ == "__main__":
     parser.add_argument("--task", type=str, help="처리할 task 유형 (face, tattoo, license, text)")
     parser.add_argument("--number", type=str, help="처리할 비디오 번호 (예: 0001)")
     parser.add_argument("--all", action="store_true", help="모든 비디오 처리")
+    parser.add_argument("--batch-all", action="store_true",
+                        help="배치 모드: source의 모든 영상을 masks/{mask-source}와 매칭하여 result에 저장")
     parser.add_argument("--block", type=int, default=15, help="모자이크 블록 크기 (기본값: 15, 클수록 더 흐릿함)")
     parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help=f"병렬 처리 워커 수 (기본값: {DEFAULT_WORKERS})")
-    parser.add_argument("--batch", type=int, default=DEFAULT_BATCH, help=f"배치 크기 (기본값: {DEFAULT_BATCH})")
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH, help=f"배치 크기 (기본값: {DEFAULT_BATCH})")
     parser.add_argument("--fast", action="store_true", help="빠른 모드 (컨투어 처리 생략)")
     parser.add_argument("--parallel", "-p", type=int, default=1,
                         help="동시 처리 영상 수 (기본값: 1, 2-3 권장)")
-    parser.add_argument("--mask-source", type=str, default=None,
-                        help="masks 폴더 내 소스 이름 (예: sam3, rexomni)")
+    parser.add_argument("--mask-source", type=str, default="rexomni",
+                        help="masks 폴더 내 소스 이름 (기본값: rexomni)")
     parser.add_argument("--source-url", type=str, default=None,
                         help="S3 Presigned URL for source video")
     parser.add_argument("--mask-url", type=str, default=None,
@@ -390,26 +474,31 @@ if __name__ == "__main__":
     args = parser.parse_args()
     use_contour = not args.fast
 
-    if args.task and args.number:
+    if args.batch_all:
+        # 배치 모드: source 전체를 masks/{mask_source}와 매칭하여 result에 저장
+        process_batch(args.mask_source, args.block, args.workers, args.batch_size, use_contour)
+    elif args.task and args.number:
         # 단일 비디오 처리
         success = process_single_video(args.task, args.number, args.block, args.workers,
-                                       args.batch, use_contour, args.mask_source,
+                                       args.batch_size, use_contour, args.mask_source,
                                        args.source_url, args.mask_url)
         exit(0 if success else 1)
     elif args.all or args.task:
         # 모든 비디오 또는 특정 task의 모든 비디오 처리
-        process_all_videos(args.task, args.block, args.workers, args.batch, use_contour, args.parallel)
+        process_all_videos(args.task, args.block, args.workers, args.batch_size, use_contour, args.parallel)
     else:
         # 사용법 출력
         print("사용법:")
+        print("  배치 처리: python mosaic.py --batch-all")
+        print("  배치 처리 (다른 마스크): python mosaic.py --batch-all --mask-source sam3")
         print("  단일 비디오: python mosaic.py --task face --number 0001")
         print("  특정 task 전체: python mosaic.py --task face --all")
         print("  모든 비디오: python mosaic.py --all")
-        print("  블록 크기 지정: python mosaic.py --task face --number 0001 --block 20")
         print("")
         print("옵션:")
+        print("  --batch-all: source 전체를 masks/{mask-source}와 매칭하여 result에 저장")
+        print("  --mask-source: 마스크 폴더 이름 (기본값: rexomni)")
         print("  --block: 모자이크 블록 크기 (기본값 15, 클수록 더 강한 모자이크)")
         print(f"  --workers: 병렬 처리 워커 수 (기본값 {DEFAULT_WORKERS})")
-        print(f"  --batch: 배치 크기 (기본값 {DEFAULT_BATCH})")
+        print(f"  --batch-size: 배치 크기 (기본값 {DEFAULT_BATCH})")
         print("  --fast: 빠른 모드 (컨투어 처리 생략)")
-        print("  --parallel, -p: 동시 처리 영상 수 (기본값 1, 여러 영상 동시 처리)")
