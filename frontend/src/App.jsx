@@ -286,7 +286,7 @@ function AppContent() {
       if (e.code === 'KeyM') {
         e.preventDefault()
         if (currentVideo) {
-          onToggleMosaic()
+          handleToggleMosaic()
         }
       }
 
@@ -307,13 +307,15 @@ function AppContent() {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [currentVideo, isSaving, handleSave, toggleMask])
+  }, [currentVideo, isSaving, handleSave, toggleMask, handleToggleMosaic])
 
   const handleVideoSelect = async (videoName) => {
     const video = videos.find(v => v.name === videoName)
     if (video) {
       setViewingMosaic(false)
       setVideoPreparing(true)
+      setCurrentFrame(0)
+      setVideoMeta({ fps: 30, frameCount: 0 })
 
       try {
         // 비디오 변환 백그라운드 작업 시작
@@ -482,11 +484,11 @@ function AppContent() {
     }
   }
 
-  const handleMetadataLoaded = (meta) => {
+  const handleMetadataLoaded = useCallback((meta) => {
     setVideoMeta(meta)
-  }
+  }, [])
 
-  const handleTimeUpdate = (time) => {
+  const handleTimeUpdate = useCallback((time) => {
     const fps = videoMeta.fps || 30
     const frameCount = videoMeta.frameCount || 0
     
@@ -498,7 +500,7 @@ function AppContent() {
     }
     
     setCurrentFrame(Math.max(0, frame))
-  }
+  }, [videoMeta])
 
   // 평가 결과 설정 (O/X 클릭 시 프레임 기록 유지)
   const handleEvaluate = (questionId, result) => {
