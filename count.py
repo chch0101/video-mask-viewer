@@ -27,7 +27,9 @@ print("-" * 40)
 for task in all_tasks:
     done = done_by_task[task]
     total = total_by_task[task]
-    pct = f"{done/total*100:.1f}%" if total > 0 else "-"
+    if total == 0:
+        continue  # 전체가 0인 task는 출력하지 않음
+    pct = f"{done/total*100:.1f}%"
     print(f"{task:<12} {done:>4}/{total:<4}   {pct:>6}")
     total_done += done
     total_all += total
