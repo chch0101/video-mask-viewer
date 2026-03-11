@@ -5,7 +5,12 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
-# Build to dist folder (override vite.config.js outDir)
+
+# Build-time variables for Vite
+ARG VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+
+# Build to dist folder
 RUN npm run build -- --outDir dist
 
 # Stage 2: Python Backend
