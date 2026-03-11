@@ -452,6 +452,10 @@ const VideoPlayer = forwardRef(function VideoPlayer({
 
     if (!sourceVideo || !maskVideo) return
 
+    // 마스크 소스 변경 시 로드 상태 리셋
+    maskLoadedRef.current = false
+    durationRatioRef.current = 1
+
     // 소스 비디오 메타데이터 (길이 등) 로드 시
     const handleSourceMetadata = () => {
       if (sourceVideo) {
@@ -559,7 +563,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
       maskVideo.removeEventListener('error', handleError)
       maskVideo.removeEventListener('loadeddata', handleMaskReady)
     }
-  }, [currentVideo])
+  }, [currentVideo, selectedMaskSource])
 
   const updateDebugInfo = () => {
     const srcReady = sourceVideoRef.current?.readyState >= 2
@@ -928,8 +932,8 @@ const VideoPlayer = forwardRef(function VideoPlayer({
           <video
             ref={mosaicVideoRef}
             src={selectedMaskSource
-              ? `/video/mosaic/${selectedMaskSource}/${currentVideo.name.replace(/_\d+$/, '')}/${currentVideo.name}.mp4`
-              : `/video/mosaic/${currentVideo.name.replace(/_\d+$/, '')}/${currentVideo.name}.mp4`
+              ? `/video/mosaic/${selectedMaskSource}/${currentVideo.name}.mp4`
+              : `/video/mosaic/${currentVideo.name}.mp4`
             }
             crossOrigin="anonymous"
             muted
