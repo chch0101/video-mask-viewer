@@ -560,7 +560,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
       maskVideo.removeEventListener('error', handleError)
       maskVideo.removeEventListener('loadeddata', handleMaskReady)
     }
-  }, [currentVideo, selectedMaskSource])
+  }, [currentVideo, selectedMaskSource, onMetadataLoaded, onTimeUpdate, onMaskLoaded])
 
   const updateDebugInfo = () => {
     const srcReady = sourceVideoRef.current?.readyState >= 2

@@ -142,6 +142,8 @@ function AppContent() {
   const handleVideoSelect = useCallback(async (videoName) => {
     const video = videos.find(v => v.name === videoName)
     if (video) {
+      // UI 즉시 업데이트
+      setCurrentVideo(video)
       setViewingMosaic(false)
       setVideoPreparing(true)
       setCurrentFrame(0)
@@ -189,7 +191,6 @@ function AppContent() {
       }
 
       setVideoPreparing(false)
-      setCurrentVideo(video)
     }
   }, [videos, selectedMaskSource])
 
@@ -282,12 +283,16 @@ function AppContent() {
   }, [])
 
   const handleTimeUpdate = useCallback((time) => {
+    // videoMeta가 아직 로드되지 않았을 경우를 대비한 방어 로직
     const fps = videoMeta.fps || 30
-    const frameCount = videoMeta.frameCount || 0
+    const frameCount = videoMeta.frameCount
     let frame = Math.floor(time * fps + 0.001) 
+    
+    // frameCount가 0보다 클 때만 캡핑 (마지막 프레임 초과 방지)
     if (frameCount > 0 && frame >= frameCount) {
       frame = frameCount - 1
     }
+    
     setCurrentFrame(Math.max(0, frame))
   }, [videoMeta])
 
