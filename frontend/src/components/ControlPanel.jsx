@@ -180,7 +180,7 @@ const ControlPanel = memo(function ControlPanel({
       </div>
 
       <div className="info-box">
-        <div>Current: <span style={{ fontWeight: 'bold', color: '#1976d2' }}>{currentFrame}</span> / {frameCount}</div>
+        <div>Current: <span style={{ fontWeight: 'bold', color: '#1976d2' }}>{currentFrame + 1}</span> / {frameCount}</div>
         <div>FPS: <span>{fps}</span></div>
       </div>
 

@@ -37,6 +37,7 @@ Thumbs.db
 evaluations/
 video/
 backend/cache/
+*.db
 
 # Logs
 *.log

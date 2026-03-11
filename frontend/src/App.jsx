@@ -282,6 +282,14 @@ function AppContent() {
         toggleMask()
       }
 
+      // M: 모자이크 on/off 토글
+      if (e.code === 'KeyM') {
+        e.preventDefault()
+        if (currentVideo) {
+          onToggleMosaic()
+        }
+      }
+
       // Space: 영상 재생/멈춤
       if (e.code === 'Space') {
         e.preventDefault()
@@ -481,9 +489,10 @@ function AppContent() {
   const handleTimeUpdate = (time) => {
     const fps = videoMeta.fps || 30
     const frameCount = videoMeta.frameCount || 0
-    let frame = Math.floor(time * fps)
     
-    // 마지막 프레임 버그 해결: 전체 프레임 수 - 1 을 넘지 않도록
+    // Math.round를 사용하고, 마지막 프레임 부근에서 보정
+    let frame = Math.floor(time * fps + 0.001) 
+    
     if (frameCount > 0 && frame >= frameCount) {
       frame = frameCount - 1
     }
