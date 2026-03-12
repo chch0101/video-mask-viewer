@@ -1757,6 +1757,126 @@ def get_storage_status():
     })
 
 
+# ===== 카카오톡 챗봇 Integration =====
+def get_evaluation_count(mask_source: str) -> str:
+    """S3에서 평가 진행 상황을 집계하여 텍스트로 반환"""
+    if not USE_S3 or not s3_client:
+        return "S3가 비활성화되어 있습니다."
+
+    paginator = s3_client.get_paginator('list_objects_v2')
+
+    # 1. source 폴더에서 비디오 목록 가져오기
+    total_by_task = defaultdict(int)
+    source_prefix = f"{S3_PREFIX}/source/"
+
+    for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=source_prefix):
+        for obj in page.get('Contents', []):
+            key = obj['Key']
+            filename = key.replace(source_prefix, '')
+            if filename.endswith('.mp4') and '/' not in filename:
+                name = filename[:-4]
+                parts = name.rsplit('_', 1)
+                if len(parts) == 2 and parts[1].isdigit():
+                    total_by_task[parts[0]] += 1
+
+    # 2. evaluations/{mask_source}/ 폴더에서 평가 파일 카운트
+    done_by_task = defaultdict(int)
+    eval_prefix = f"{S3_PREFIX}/evaluations/{mask_source}/"
+
+    for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=eval_prefix):
+        for obj in page.get('Contents', []):
+            key = obj['Key']
+            rel_path = key.replace(eval_prefix, '')
+            parts = rel_path.split('/')
+            if len(parts) == 2 and parts[1].endswith('.csv'):
+                task = parts[0]
+                done_by_task[task] += 1
+
+    # 3. 결과 생성 (카카오톡용 포맷)
+    all_tasks = sorted(set(total_by_task) | set(done_by_task))
+    total_done = total_all = 0
+
+    lines = []
+    lines.append(f"📊 평가 진행 현황 [{mask_source}]")
+    lines.append("=" * 24)
+
+    for task in all_tasks:
+        done = done_by_task[task]
+        total = total_by_task[task]
+        if total == 0:
+            continue
+        pct = done / total * 100
+        bar = "█" * int(pct // 10) + "░" * (10 - int(pct // 10))
+        lines.append(f"{task}: {done}/{total} ({pct:.1f}%)")
+        lines.append(f"  {bar}")
+        total_done += done
+        total_all += total
+
+    lines.append("=" * 24)
+    pct_all = total_done / total_all * 100 if total_all > 0 else 0
+    lines.append(f"✅ 전체: {total_done}/{total_all} ({pct_all:.1f}%)")
+
+    return "\n".join(lines)
+
+
+@app.route('/kakao/count', methods=['POST'])
+def kakao_count():
+    """
+    카카오 i 오픈빌더 스킬 엔드포인트
+    사용법: "진행현황", "진행현황 sam2" 등
+    """
+    try:
+        body = request.get_json()
+
+        # 사용자 발화에서 mask_source 추출
+        utterance = body.get('userRequest', {}).get('utterance', '').strip()
+
+        # "진행현황 sam2" 형태에서 mask_source 추출
+        parts = utterance.split()
+        mask_source = 'rexomni'  # 기본값
+
+        allowed_sources = ['rexomni', 'sam2', 'cutie']
+        for part in parts:
+            if part.lower() in allowed_sources:
+                mask_source = part.lower()
+                break
+
+        # 평가 현황 조회
+        result = get_evaluation_count(mask_source)
+
+        # 카카오 응답 형식
+        return jsonify({
+            "version": "2.0",
+            "template": {
+                "outputs": [
+                    {
+                        "simpleText": {
+                            "text": result
+                        }
+                    }
+                ],
+                "quickReplies": [
+                    {"label": "rexomni", "action": "message", "messageText": "진행현황 rexomni"},
+                    {"label": "sam2", "action": "message", "messageText": "진행현황 sam2"},
+                    {"label": "cutie", "action": "message", "messageText": "진행현황 cutie"}
+                ]
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            "version": "2.0",
+            "template": {
+                "outputs": [
+                    {
+                        "simpleText": {
+                            "text": f"오류가 발생했습니다: {str(e)}"
+                        }
+                    }
+                ]
+            }
+        })
+
+
 if __name__ == '__main__':
     print(f"Video directory: {VIDEO_DIR}")
     print(f"Evaluations directory: {EVALUATIONS_DIR}")
