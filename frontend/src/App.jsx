@@ -269,9 +269,14 @@ function AppContent() {
           localStorage.setItem('vmask_user', JSON.stringify(updatedUser))
         }
 
-        const currentIndex = videos.findIndex(v => v.name === currentVideo?.name)
-        if (currentIndex < videos.length - 1) {
-          handleVideoSelect(videos[currentIndex + 1].name)
+        const maskedVideos = videos.filter(v =>
+          selectedMaskSource
+            ? v.availableMasks?.includes(selectedMaskSource)
+            : (v.availableMasks?.length || 0) > 0
+        )
+        const currentIndex = maskedVideos.findIndex(v => v.name === currentVideo?.name)
+        if (currentIndex < maskedVideos.length - 1) {
+          handleVideoSelect(maskedVideos[currentIndex + 1].name)
         } else {
           alert('모든 비디오의 평가가 완료되었습니다! 🎉')
         }
