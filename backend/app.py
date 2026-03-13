@@ -66,15 +66,12 @@ if USE_S3:
         USE_S3 = False
 
 
-def upload_to_s3(local_path, s3_key, metadata=None):
+def upload_to_s3(local_path, s3_key):
     """파일을 S3에 업로드"""
     if not s3_client or not S3_BUCKET:
         return False
     try:
-        extra_args = {}
-        if metadata:
-            extra_args['Metadata'] = {k: str(v) for k, v in metadata.items()}
-        s3_client.upload_file(local_path, S3_BUCKET, s3_key, ExtraArgs=extra_args if extra_args else None)
+        s3_client.upload_file(local_path, S3_BUCKET, s3_key)
         print(f"[S3] Uploaded: {local_path} -> s3://{S3_BUCKET}/{s3_key}")
         return True
     except Exception as e:
@@ -811,7 +808,7 @@ def save_evaluation():
     if USE_S3:
         s3_filename = f"evaluations/{mask_source}/{task_name}/{filename}" if mask_source else f"evaluations/{task_name}/{filename}"
         s3_key = f"{S3_PREFIX}/{s3_filename}"
-        upload_to_s3(filepath, s3_key, metadata={'saved-by': saved_by} if saved_by else None)
+        upload_to_s3(filepath, s3_key)
 
     # SQLite DB에 로그 기록
     if user_info and user_info.get('id'):
@@ -888,13 +885,21 @@ def list_evaluations():
                             'saved_by': ''
                         })
 
-            # video_name이 지정된 경우 해당 파일들의 메타데이터만 조회 (저장자 정보)
+            # video_name이 지정된 경우 해당 파일만 필터 + CSV에서 저장자 정보 읽기
             if video_name:
                 matched = [f for f in raw_files if video_name in f['filename']]
                 for item in matched:
                     try:
-                        head = s3_client.head_object(Bucket=S3_BUCKET, Key=item['s3_key'])
-                        item['saved_by'] = head.get('Metadata', {}).get('saved-by', '')
+                        obj_body = s3_client.get_object(Bucket=S3_BUCKET, Key=item['s3_key'])
+                        content = obj_body['Body'].read().decode('utf-8-sig')
+                        lines = content.strip().splitlines()
+                        if len(lines) >= 2:  # 헤더 + 데이터 행
+                            import io
+                            reader = csv.reader(io.StringIO(content))
+                            next(reader)  # 헤더 스킵
+                            first_row = next(reader, None)
+                            if first_row and len(first_row) >= 7:
+                                item['saved_by'] = first_row[6]
                     except Exception:
                         pass
                 files = matched
