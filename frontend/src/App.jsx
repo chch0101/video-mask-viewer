@@ -14,6 +14,32 @@ const initialEvaluations = {
   Q5: { result: null, frameRanges: [] }
 }
 
+// Simple Error Boundary
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '20px', color: 'red', backgroundColor: '#fff' }}>
+          <h1>Something went wrong.</h1>
+          <pre>{this.state.error?.toString()}</pre>
+          <button onClick={() => { localStorage.clear(); location.reload(); }}>Clear Cache & Reload</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function AppContent() {
   const { toggleMask } = useMask()
 
@@ -38,6 +64,7 @@ function AppContent() {
   const [user, setUser] = useState(() => {
     try {
       const saved = localStorage.getItem('vmask_user')
+      if (saved === 'undefined' || saved === 'null') return null;
       return saved ? JSON.parse(saved) : null
     } catch (err) {
       console.error("Failed to parse user from localStorage", err)
@@ -48,9 +75,20 @@ function AppContent() {
   const videoPlayerRef = useRef(null)
   const maskSourceDebounceRef = useRef(null)
 
+  useEffect(() => {
+    console.log("App mounted. User:", user?.email);
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      console.log("Rendering main UI for user:", user.email);
+    }
+  }, [user]);
+
   // Google Login Success Handler
   const handleLoginSuccess = async (credentialResponse) => {
     try {
+      console.log("Login success, verifying with backend...");
       const res = await fetch('/api/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -58,17 +96,21 @@ function AppContent() {
       })
       const data = await res.json()
       if (data.success && data.user) {
+        console.log("Backend verification success:", data.user.email);
         setUser(data.user)
         localStorage.setItem('vmask_user', JSON.stringify(data.user))
       } else {
         console.error("Login failed on backend", data)
+        alert("로그인 세션 확인에 실패했습니다. (Google 계정 확인 필요)")
       }
     } catch (err) {
       console.error("Error during authentication", err)
+      alert("로그인 중 서버 통신 오류가 발생했습니다.")
     }
   }
 
   const handleLogout = () => {
+    console.log("Logging out...");
     googleLogout()
     setUser(null)
     localStorage.removeItem('vmask_user')
@@ -76,14 +118,14 @@ function AppContent() {
 
   // 현재 비디오의 평가 기록 가져오기 + 최신 평가 자동 로드
   const fetchEvaluationHistory = useCallback(async (videoName, maskSource) => {
-    if (!videoName) return
+    if (!videoName || !user) return
     try {
       const url = maskSource
         ? `/api/evaluations?mask_source=${maskSource}`
         : '/api/evaluations'
       const response = await fetch(url)
       const data = await response.json()
-      const filtered = data.evaluations.filter(e =>
+      const filtered = (data.evaluations || []).filter(e =>
         e.filename.includes(videoName)
       )
       setEvaluationHistory(filtered)
@@ -97,9 +139,11 @@ function AppContent() {
           if (evalData.results) {
             const loaded = { ...initialEvaluations }
             evalData.results.forEach(row => {
-              loaded[row.id] = {
-                result: row.result === 'N/A' ? null : row.result,
-                frameRanges: row.frameRanges || []
+              if (loaded[row.id]) {
+                loaded[row.id] = {
+                  result: row.result === 'N/A' ? null : row.result,
+                  frameRanges: row.frameRanges || []
+                }
               }
             })
             setEvaluations(loaded)
@@ -114,7 +158,7 @@ function AppContent() {
     } catch (err) {
       console.error('Failed to load evaluation history:', err)
     }
-  }, [])
+  }, [user])
 
   // 비디오 목록 갱신 (mask_source에 따른 평가 상태 반영)
   const fetchVideos = useCallback(async (maskSource) => {
@@ -124,8 +168,9 @@ function AppContent() {
         : '/api/videos'
       const res = await fetch(url)
       const data = await res.json()
-      setVideos(data.videos)
-      return data.videos
+      const videoList = data.videos || []
+      setVideos(videoList)
+      return videoList
     } catch (err) {
       console.error('Failed to load videos:', err)
       return []
@@ -144,7 +189,7 @@ function AppContent() {
   }, [])
 
   const handleVideoSelect = useCallback(async (videoName) => {
-    const video = videos.find(v => v.name === videoName)
+    const video = (videos || []).find(v => v.name === videoName)
     if (video) {
       // UI 즉시 업데이트
       setCurrentVideo(video)
@@ -369,7 +414,7 @@ function AppContent() {
       setSelectedMaskSource(firstSource)
       setPendingMaskSource(firstSource)
       fetchVideos(firstSource).then(vids => {
-        if (vids.length > 0) {
+        if (vids && vids.length > 0) {
           handleVideoSelect(vids[0].name)
         }
       })
@@ -452,7 +497,7 @@ function AppContent() {
       ...prev,
       [questionId]: {
         ...prev[questionId],
-        frameRanges: [...prev[questionId].frameRanges, { start: frame, end: frame }]
+        frameRanges: [...(prev[questionId]?.frameRanges || []), { start: frame, end: frame }]
       }
     }))
   }
@@ -460,7 +505,8 @@ function AppContent() {
   // 프레임 범위의 시작/끝 수정
   const handleUpdateFrameRange = (questionId, rangeIndex, field, value) => {
     setEvaluations(prev => {
-      const newRanges = [...prev[questionId].frameRanges]
+      if (!prev[questionId]) return prev;
+      const newRanges = [...(prev[questionId].frameRanges || [])]
       newRanges[rangeIndex] = { ...newRanges[rangeIndex], [field]: value }
       return {
         ...prev,
@@ -475,7 +521,7 @@ function AppContent() {
       ...prev,
       [questionId]: {
         ...prev[questionId],
-        frameRanges: prev[questionId].frameRanges.filter((_, i) => i !== rangeIndex)
+        frameRanges: (prev[questionId]?.frameRanges || []).filter((_, i) => i !== rangeIndex)
       }
     }))
   }
@@ -493,9 +539,11 @@ function AppContent() {
       if (data.results) {
         const loaded = { ...initialEvaluations }
         data.results.forEach(row => {
-          loaded[row.id] = {
-            result: row.result === 'N/A' ? null : row.result,
-            frameRanges: row.frameRanges || []
+          if (loaded[row.id]) {
+            loaded[row.id] = {
+              result: row.result === 'N/A' ? null : row.result,
+              frameRanges: row.frameRanges || []
+            }
           }
         })
         setEvaluations(loaded)
@@ -550,14 +598,14 @@ function AppContent() {
               user={user}
               onLogout={handleLogout}
               onOpenAdmin={() => setShowAdminPanel(true)}
-              videos={videos}
+              videos={videos || []}
               currentVideo={currentVideo}
               currentFrame={currentFrame}
               frameCount={videoMeta.frameCount}
               fps={videoMeta.fps}
               viewingMosaic={viewingMosaic}
               mosaicGenerating={mosaicGenerating}
-              maskSources={maskSources}
+              maskSources={maskSources || []}
               selectedMaskSource={pendingMaskSource || selectedMaskSource}
               maskSourceLoading={maskSourceLoading}
               onMaskSourceChange={handleMaskSourceChange}
@@ -641,8 +689,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <MaskProvider>
-      <AppContent />
-    </MaskProvider>
+    <ErrorBoundary>
+      <MaskProvider>
+        <AppContent />
+      </MaskProvider>
+    </ErrorBoundary>
   )
 }
