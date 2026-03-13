@@ -72,26 +72,29 @@ const ControlPanel = memo(function ControlPanel({
   return (
     <div className="control-panel" style={{ display: 'flex', flexDirection: 'column', gap: '15px', paddingTop: '15px' }}>
       {user && (
-        <div style={{ 
-          display: 'flex', alignItems: 'center', gap: '10px', 
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: '8px',
           backgroundColor: '#f8f9fa', padding: '12px', borderRadius: '8px',
           border: '1px solid #e0e0e0', marginBottom: '5px'
         }}>
-          {user.picture && <img src={user.picture} alt="profile" style={{ width: 32, height: 32, borderRadius: '50%' }} />}
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-            <span style={{
-              fontWeight: 'bold', fontSize: '14px', lineHeight: '1.2',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-            }}>{user.name}</span>
-            <span style={{ color: '#666', fontSize: '12px' }}>Saved: {user.saved_count || 0}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {user.picture && <img src={user.picture} alt="profile" style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0 }} />}
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+              <span style={{
+                fontWeight: 'bold', fontSize: '14px', lineHeight: '1.2',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+              }}>{user.name}</span>
+              <span style={{ color: '#666', fontSize: '12px' }}>Saved: {user.saved_count || 0}</span>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '6px' }}>
             {isAdmin && (
               <button
                 onClick={onOpenAdmin}
                 style={{
-                  padding: '6px 10px', cursor: 'pointer', borderRadius: '4px',
-                  border: '1px solid #1976d2', background: '#1976d2', color: 'white', fontSize: '12px'
+                  flex: 1, padding: '8px 10px', cursor: 'pointer', borderRadius: '4px',
+                  border: '1px solid #1976d2', background: '#1976d2', color: 'white', fontSize: '12px',
+                  fontWeight: '500'
                 }}
               >
                 Admin
@@ -100,7 +103,7 @@ const ControlPanel = memo(function ControlPanel({
             <button
               onClick={onLogout}
               style={{
-                padding: '6px 10px', cursor: 'pointer', borderRadius: '4px',
+                flex: 1, padding: '8px 10px', cursor: 'pointer', borderRadius: '4px',
                 border: '1px solid #ccc', background: 'white', fontSize: '12px'
               }}
             >

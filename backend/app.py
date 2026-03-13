@@ -99,25 +99,28 @@ def get_s3_presigned_url(key, expiration=3600):
         print(f"[S3] Failed to generate presigned URL: {e}")
         return None
 
-def download_db_from_s3():
+def download_db_from_s3(force=False):
     """앱 시작 시 S3에서 evaluations.db 다운로드 (Railway Volume 초기화 대응)"""
     if not USE_S3 or not s3_client or not S3_BUCKET:
-        return
-    
+        print("[S3-DB] S3 not configured")
+        return False
+
     s3_key = f"{S3_PREFIX}/evaluations.db"
     local_path = database.DB_PATH
-    
-    # 로컬에 이미 파일이 있으면 굳이 덮어쓰지 않음 (최신 데이터일 확률이 높음)
-    if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+
+    # 로컬에 이미 파일이 있으면 굳이 덮어쓰지 않음 (force=True면 강제 다운로드)
+    if not force and os.path.exists(local_path) and os.path.getsize(local_path) > 0:
         print(f"[S3-DB] Local DB already exists at {local_path}. Skipping initial download.")
-        return
+        return True
 
     try:
-        print(f"[S3-DB] Checking for DB at s3://{S3_BUCKET}/{s3_key}...")
+        print(f"[S3-DB] Downloading DB from s3://{S3_BUCKET}/{s3_key}...")
         s3_client.download_file(S3_BUCKET, s3_key, local_path)
-        print(f"[S3-DB] Initialized DB from S3: {local_path}")
+        print(f"[S3-DB] Downloaded DB from S3: {local_path}")
+        return True
     except Exception as e:
-        print(f"[S3-DB] No DB found in S3 or download failed: {e}. Starting fresh.")
+        print(f"[S3-DB] Download failed: {e}")
+        return False
 
 def upload_db_to_s3():
     """evaluations.db를 S3로 백업"""
@@ -1930,15 +1933,17 @@ def admin_evaluations():
 
 @app.route('/api/admin/sync-db', methods=['POST'])
 def admin_sync_db():
-    """S3에서 DB 동기화"""
+    """S3에서 DB 강제 동기화"""
     if not check_admin_access():
         return jsonify({'error': 'Unauthorized'}), 403
 
-    success = download_db_from_s3()
+    success = download_db_from_s3(force=True)
     if success:
+        # DB 재초기화 (테이블 확인)
+        database.init_db()
         return jsonify({'success': True, 'message': 'DB synced from S3'})
     else:
-        return jsonify({'success': False, 'message': 'Failed to sync DB from S3'}), 500
+        return jsonify({'success': False, 'message': 'Failed to sync DB from S3. Check S3 configuration.'}), 500
 
 
 if __name__ == '__main__':

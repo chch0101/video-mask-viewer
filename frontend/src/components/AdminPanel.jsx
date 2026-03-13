@@ -14,10 +14,10 @@ export default function AdminPanel({ user, onClose }) {
 
   useEffect(() => {
     fetchStats()
+    fetchUsers()
   }, [])
 
   useEffect(() => {
-    if (activeTab === 'users') fetchUsers()
     if (activeTab === 'evaluations') fetchEvaluations()
   }, [activeTab])
 
@@ -66,7 +66,7 @@ export default function AdminPanel({ user, onClose }) {
       if (data.success) {
         alert('DB 동기화 완료!')
         fetchStats()
-        if (activeTab === 'users') fetchUsers()
+        fetchUsers()
         if (activeTab === 'evaluations') fetchEvaluations()
       } else {
         alert('동기화 실패: ' + data.message)
@@ -86,12 +86,25 @@ export default function AdminPanel({ user, onClose }) {
     <div className="admin-overlay">
       <div className="admin-panel">
         <div className="admin-header">
-          <h2>관리자 패널</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '40px', height: '40px', borderRadius: '10px',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'white', fontSize: '18px'
+            }}>
+              ⚙
+            </div>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '18px' }}>관리자 패널</h2>
+              <span style={{ fontSize: '12px', color: '#888' }}>{user?.email}</span>
+            </div>
+          </div>
           <div className="admin-header-actions">
             <button className="sync-btn" onClick={handleSyncDB} disabled={syncing}>
-              {syncing ? '동기화 중...' : 'S3 동기화'}
+              {syncing ? '⏳ 동기화 중...' : '☁️ S3 동기화'}
             </button>
-            <button className="close-btn" onClick={onClose}>×</button>
+            <button className="close-btn" onClick={onClose}>✕</button>
           </div>
         </div>
 
@@ -100,32 +113,67 @@ export default function AdminPanel({ user, onClose }) {
             className={activeTab === 'dashboard' ? 'active' : ''}
             onClick={() => setActiveTab('dashboard')}
           >
-            대시보드
+            📊 대시보드
           </button>
           <button
             className={activeTab === 'users' ? 'active' : ''}
             onClick={() => setActiveTab('users')}
           >
-            사용자
+            👥 사용자
           </button>
           <button
             className={activeTab === 'evaluations' ? 'active' : ''}
             onClick={() => setActiveTab('evaluations')}
           >
-            평가 데이터
+            📋 평가 데이터
           </button>
         </div>
 
         <div className="admin-content">
           {activeTab === 'dashboard' && (
             <div className="dashboard">
-              <div className="stat-card">
-                <div className="stat-value">{stats.user_count}</div>
-                <div className="stat-label">총 사용자</div>
+              <div className="stat-card" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                <div className="stat-icon">👥</div>
+                <div className="stat-info">
+                  <div className="stat-value">{stats.user_count}</div>
+                  <div className="stat-label">총 사용자</div>
+                </div>
               </div>
-              <div className="stat-card">
-                <div className="stat-value">{stats.eval_count}</div>
-                <div className="stat-label">총 평가 수</div>
+              <div className="stat-card" style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
+                <div className="stat-icon">📝</div>
+                <div className="stat-info">
+                  <div className="stat-value">{stats.eval_count}</div>
+                  <div className="stat-label">총 평가 수</div>
+                </div>
+              </div>
+              <div className="stat-card" style={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' }}>
+                <div className="stat-icon">📈</div>
+                <div className="stat-info">
+                  <div className="stat-value">
+                    {stats.user_count > 0 ? (stats.eval_count / stats.user_count).toFixed(1) : 0}
+                  </div>
+                  <div className="stat-label">인당 평균</div>
+                </div>
+              </div>
+
+              <div className="recent-users">
+                <h3>최근 가입 사용자</h3>
+                {users.slice(0, 5).map((u) => (
+                  <div key={u.id} className="recent-user-item">
+                    {u.picture ? (
+                      <img src={u.picture} alt="" className="user-avatar" />
+                    ) : (
+                      <div className="user-avatar-placeholder">👤</div>
+                    )}
+                    <div className="recent-user-info">
+                      <span className="recent-user-name">{u.name}</span>
+                      <span className="recent-user-email">{u.email}</span>
+                    </div>
+                    <span className="recent-user-date">
+                      {new Date(u.created_at).toLocaleDateString('ko-KR')}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
