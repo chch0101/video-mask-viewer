@@ -99,6 +99,31 @@ def get_s3_presigned_url(key, expiration=3600):
         print(f"[S3] Failed to generate presigned URL: {e}")
         return None
 
+def verify_google_token(token):
+    """Google ID Token 또는 Access Token 검증하여 사용자 정보 반환"""
+    if not token:
+        return None
+        
+    import urllib.request
+    import json
+    
+    try:
+        # 1. ID Token 검증 시도
+        verify_url = f'https://oauth2.googleapis.com/tokeninfo?id_token={token}'
+        try:
+            req = urllib.request.Request(verify_url)
+            with urllib.request.urlopen(req) as response:
+                return json.loads(response.read().decode())
+        except Exception:
+            # 2. Access Token 검증 시도 (fallback)
+            verify_url = f'https://oauth2.googleapis.com/tokeninfo?access_token={token}'
+            req = urllib.request.Request(verify_url)
+            with urllib.request.urlopen(req) as response:
+                return json.loads(response.read().decode())
+    except Exception as e:
+        print(f"[Auth] Token verification failed: {e}")
+        return None
+
 def download_db_from_s3(force=False):
     """앱 시작 시 S3에서 evaluations.db 다운로드 (Railway Volume 초기화 대응)"""
     if not USE_S3 or not s3_client or not S3_BUCKET:
@@ -669,39 +694,17 @@ def get_video_meta(name):
 
 @app.route('/api/auth/google', methods=['POST'])
 def auth_google():
-    """Google OAuth2 Token Verify (Supports Access Token and ID Token)"""
+    """Google OAuth2 Token Verify"""
     data = request.json
     credential = data.get('credential')
     if not credential:
         return jsonify({'error': 'Missing credential'}), 400
     
-    import urllib.request
-    import json
+    user_info = verify_google_token(credential)
+    if not user_info:
+        return jsonify({'error': 'Invalid token'}), 401
+        
     try:
-        # try tokeninfo for ID Token or Access Token verification
-        # id_token or access_token can be verified via this endpoint
-        verify_url = f'https://oauth2.googleapis.com/tokeninfo?id_token={credential}'
-        
-        try:
-            req = urllib.request.Request(verify_url)
-            with urllib.request.urlopen(req) as response:
-                user_info = json.loads(response.read().decode())
-        except Exception:
-            # Fallback to access_token verification if id_token failed
-            verify_url = f'https://oauth2.googleapis.com/tokeninfo?access_token={credential}'
-            req = urllib.request.Request(verify_url)
-            with urllib.request.urlopen(req) as response:
-                user_info = json.loads(response.read().decode())
-
-        # If still no user_info, try userinfo endpoint (legacy)
-        if not user_info.get('sub') and not user_info.get('user_id'):
-            req = urllib.request.Request(
-                'https://www.googleapis.com/oauth2/v3/userinfo',
-                headers={'Authorization': f'Bearer {credential}'}
-            )
-            with urllib.request.urlopen(req) as response:
-                user_info = json.loads(response.read().decode())
-        
         user_id = user_info.get('sub') or user_info.get('user_id')
         email = user_info.get('email')
         name = user_info.get('name') or email.split('@')[0] if email else "User"
@@ -721,7 +724,8 @@ def auth_google():
                 'email': email,
                 'name': name,
                 'picture': picture,
-                'saved_count': count
+                'saved_count': count,
+                'credential': credential # 프론트엔드에서 이후 요청에 사용할 토큰
             }
         })
     except Exception as e:
@@ -1886,19 +1890,32 @@ ADMIN_EMAILS = ["choihaechan7@gmail.com"]
 
 
 def check_admin_access():
-    """관리자 권한 확인"""
-    auth_header = request.headers.get('X-User-Email')
-    if not auth_header or auth_header not in ADMIN_EMAILS:
-        return False
-    return True
+    """관리자 권한 확인 (Bearer Token 검증)"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None
+        
+    token = auth_header.split(' ')[1]
+    user_info = verify_google_token(token)
+    
+    if not user_info:
+        return None
+        
+    email = user_info.get('email')
+    if not email or email not in ADMIN_EMAILS:
+        return None
+        
+    return email
 
 
 @app.route('/api/admin/check', methods=['GET'])
 def admin_check():
     """관리자 권한 확인 API"""
-    email = request.headers.get('X-User-Email')
-    is_admin = email in ADMIN_EMAILS if email else False
-    return jsonify({'is_admin': is_admin, 'email': email})
+    email = check_admin_access()
+    return jsonify({
+        'is_admin': email is not None,
+        'email': email
+    })
 
 
 @app.route('/api/admin/stats', methods=['GET'])

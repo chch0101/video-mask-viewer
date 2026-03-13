@@ -1,8 +1,6 @@
 import { memo, useState, useMemo } from 'react'
 import MaskControls from './MaskControls'
 
-const ADMIN_EMAILS = ['choihaechan7@gmail.com']
-
 const ControlPanel = memo(function ControlPanel({
   user,
   onLogout,
@@ -24,7 +22,24 @@ const ControlPanel = memo(function ControlPanel({
   onSeekFrames,
   onToggleMosaic
 }) {
-  const isAdmin = user && ADMIN_EMAILS.includes(user.email)
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  // 관리자 권한 확인 (API 호출)
+  useEffect(() => {
+    const checkAdmin = async () => {
+      if (!user?.credential) return
+      try {
+        const res = await fetch('/api/admin/check', {
+          headers: { 'Authorization': `Bearer ${user.credential}` }
+        })
+        const data = await res.json()
+        setIsAdmin(data.is_admin)
+      } catch (err) {
+        console.error('Admin check failed:', err)
+      }
+    }
+    checkAdmin()
+  }, [user])
   const [selectedTask, setSelectedTask] = useState('all')
 
   // task 목록 추출 (비디오 이름에서 task 추출: face_0001 → face)

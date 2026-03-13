@@ -10,7 +10,7 @@ export default function AdminPanel({ user, onClose }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedUser, setSelectedUser] = useState('')
 
-  const headers = { 'X-User-Email': user?.email || '' }
+  const headers = { 'Authorization': `Bearer ${user?.credential || ''}` }
 
   useEffect(() => {
     fetchStats()
