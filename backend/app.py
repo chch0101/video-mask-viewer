@@ -744,20 +744,10 @@ def save_evaluation():
     if not video_name or not evaluations:
         return jsonify({'error': 'Missing data'}), 400
 
-    # mask_source/task별 서브디렉토리 생성
-    task_name = get_task_name(video_name)
-    if mask_source:
-        task_dir = os.path.join(EVALUATIONS_DIR, mask_source, task_name)
-    else:
-        task_dir = os.path.join(EVALUATIONS_DIR, task_name)
-    os.makedirs(task_dir, exist_ok=True)
-
-    filename = f"evaluation_{video_name}.csv"
-    filepath = os.path.join(task_dir, filename)
-
     # 저장자 정보
     user_info = data.get('user')
     saved_by = ''
+    user_folder = 'unknown'
     if user_info:
         name = user_info.get('name', '')
         email = user_info.get('email', '')
@@ -767,6 +757,21 @@ def save_evaluation():
             saved_by = email
         elif name:
             saved_by = name
+        if email:
+            user_folder = email.replace('/', '_').replace('\\', '_')
+        elif name:
+            user_folder = name.replace('/', '_').replace('\\', '_')
+
+    # mask_source/task/user별 서브디렉토리 생성
+    task_name = get_task_name(video_name)
+    if mask_source:
+        task_dir = os.path.join(EVALUATIONS_DIR, mask_source, task_name, user_folder)
+    else:
+        task_dir = os.path.join(EVALUATIONS_DIR, task_name, user_folder)
+    os.makedirs(task_dir, exist_ok=True)
+
+    filename = f"evaluation_{video_name}.csv"
+    filepath = os.path.join(task_dir, filename)
 
     # CSV 작성
     with open(filepath, 'w', encoding='utf-8-sig', newline='') as f:
@@ -806,7 +811,7 @@ def save_evaluation():
 
     # S3 업로드 (선택사항)
     if USE_S3:
-        s3_filename = f"evaluations/{mask_source}/{task_name}/{filename}" if mask_source else f"evaluations/{task_name}/{filename}"
+        s3_filename = f"evaluations/{mask_source}/{task_name}/{user_folder}/{filename}" if mask_source else f"evaluations/{task_name}/{user_folder}/{filename}"
         s3_key = f"{S3_PREFIX}/{s3_filename}"
         upload_to_s3(filepath, s3_key)
 
