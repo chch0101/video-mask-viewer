@@ -1491,6 +1491,120 @@ select:focus {
   background: var(--bg-primary);
 }
 
+/* Progress Tab */
+.progress-container {
+  padding: 0;
+}
+
+.progress-header {
+  margin-bottom: 24px;
+}
+
+.mask-source-select {
+  padding: 10px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.progress-summary {
+  margin-bottom: 32px;
+}
+
+.summary-card {
+  background: linear-gradient(135deg, var(--accent) 0%, #4f46e5 100%);
+  border-radius: 16px;
+  padding: 24px;
+  color: white;
+  text-align: center;
+}
+
+.summary-value {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.summary-label {
+  font-size: 14px;
+  opacity: 0.9;
+  margin-bottom: 16px;
+}
+
+.summary-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.summary-bar-fill {
+  height: 100%;
+  background: white;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.summary-pct {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.progress-item {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+}
+
+.progress-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.progress-task-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.progress-task-count {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.progress-bar {
+  height: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-pct {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    Mobile Responsive
    ═══════════════════════════════════════════════════════════════════ */

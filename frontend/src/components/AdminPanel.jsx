@@ -5,6 +5,8 @@ export default function AdminPanel({ user, onClose }) {
   const [stats, setStats] = useState({ user_count: 0, eval_count: 0 })
   const [users, setUsers] = useState([])
   const [evaluations, setEvaluations] = useState([])
+  const [progress, setProgress] = useState({ tasks: [], summary: {} })
+  const [maskSource, setMaskSource] = useState('rexomni')
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -19,7 +21,12 @@ export default function AdminPanel({ user, onClose }) {
 
   useEffect(() => {
     if (activeTab === 'evaluations') fetchEvaluations()
+    if (activeTab === 'progress') fetchProgress()
   }, [activeTab])
+
+  useEffect(() => {
+    if (activeTab === 'progress') fetchProgress()
+  }, [maskSource])
 
   const fetchStats = async () => {
     try {
@@ -54,6 +61,18 @@ export default function AdminPanel({ user, onClose }) {
       setEvaluations(data.evaluations || [])
     } catch (err) {
       console.error('Failed to fetch evaluations:', err)
+    }
+    setLoading(false)
+  }
+
+  const fetchProgress = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/admin/progress?mask_source=${maskSource}`, { headers })
+      const data = await res.json()
+      setProgress(data)
+    } catch (err) {
+      console.error('Failed to fetch progress:', err)
     }
     setLoading(false)
   }
@@ -120,6 +139,12 @@ export default function AdminPanel({ user, onClose }) {
             onClick={() => setActiveTab('evaluations')}
           >
             Evaluations
+          </button>
+          <button
+            className={activeTab === 'progress' ? 'active' : ''}
+            onClick={() => setActiveTab('progress')}
+          >
+            Progress
           </button>
         </div>
 
@@ -250,6 +275,60 @@ export default function AdminPanel({ user, onClose }) {
                     ))}
                   </tbody>
                 </table>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'progress' && (
+            <div className="progress-container">
+              <div className="progress-header">
+                <select
+                  value={maskSource}
+                  onChange={(e) => setMaskSource(e.target.value)}
+                  className="mask-source-select"
+                >
+                  <option value="rexomni">rexomni</option>
+                  <option value="sam2">sam2</option>
+                  <option value="cutie">cutie</option>
+                </select>
+              </div>
+              {loading ? (
+                <div className="loading">Loading...</div>
+              ) : (
+                <>
+                  <div className="progress-summary">
+                    <div className="summary-card">
+                      <div className="summary-value">
+                        {progress.summary?.done || 0} / {progress.summary?.total || 0}
+                      </div>
+                      <div className="summary-label">Total Progress</div>
+                      <div className="summary-bar">
+                        <div
+                          className="summary-bar-fill"
+                          style={{ width: `${progress.summary?.percentage || 0}%` }}
+                        />
+                      </div>
+                      <div className="summary-pct">{progress.summary?.percentage || 0}%</div>
+                    </div>
+                  </div>
+                  <div className="progress-list">
+                    {progress.tasks?.map((t) => (
+                      <div key={t.task} className="progress-item">
+                        <div className="progress-item-header">
+                          <span className="progress-task-name">{t.task}</span>
+                          <span className="progress-task-count">{t.done} / {t.total}</span>
+                        </div>
+                        <div className="progress-bar">
+                          <div
+                            className="progress-bar-fill"
+                            style={{ width: `${t.percentage}%` }}
+                          />
+                        </div>
+                        <div className="progress-pct">{t.percentage}%</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           )}

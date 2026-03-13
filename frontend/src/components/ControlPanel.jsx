@@ -55,13 +55,18 @@ const ControlPanel = memo(function ControlPanel({
     return ['all', ...Array.from(taskSet).sort()]
   }, [videos])
 
-  // 선택된 task에 따라 필터링된 비디오 목록
+  // 선택된 task에 따라 필터링된 비디오 목록 (마스크가 있는 영상만 표시)
   const filteredVideos = useMemo(() => {
+    const withMask = videos.filter(video =>
+      selectedMaskSource
+        ? video.availableMasks?.includes(selectedMaskSource)
+        : (video.availableMasks?.length || 0) > 0
+    )
     if (selectedTask === 'all') {
-      return videos
+      return withMask
     }
-    return videos.filter(video => video.name.startsWith(selectedTask + '_'))
-  }, [videos, selectedTask])
+    return withMask.filter(video => video.name.startsWith(selectedTask + '_'))
+  }, [videos, selectedTask, selectedMaskSource])
 
   const currentIndex = filteredVideos.findIndex(v => v.name === currentVideo?.name)
   const evaluatedCount = videos.filter(v => v.evaluated).length
@@ -70,10 +75,15 @@ const ControlPanel = memo(function ControlPanel({
   const handleTaskChange = (task) => {
     setSelectedTask(task)
 
-    // Task 변경 시 해당 task의 첫 번째 비디오로 자동 전환
+    // Task 변경 시 해당 task의 첫 번째 비디오로 자동 전환 (마스크 있는 것만)
+    const withMask = videos.filter(video =>
+      selectedMaskSource
+        ? video.availableMasks?.includes(selectedMaskSource)
+        : (video.availableMasks?.length || 0) > 0
+    )
     const newFilteredVideos = task === 'all'
-      ? videos
-      : videos.filter(video => video.name.startsWith(task + '_'))
+      ? withMask
+      : withMask.filter(video => video.name.startsWith(task + '_'))
 
     if (newFilteredVideos.length > 0) {
       // 현재 비디오가 새로운 필터에 없으면 첫 번째 비디오로 전환

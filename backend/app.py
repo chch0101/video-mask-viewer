@@ -755,10 +755,23 @@ def save_evaluation():
     filename = f"evaluation_{video_name}.csv"
     filepath = os.path.join(task_dir, filename)
 
+    # 저장자 정보
+    user_info = data.get('user')
+    saved_by = ''
+    if user_info:
+        name = user_info.get('name', '')
+        email = user_info.get('email', '')
+        if name and email:
+            saved_by = f"{name} ({email})"
+        elif email:
+            saved_by = email
+        elif name:
+            saved_by = name
+
     # CSV 작성
     with open(filepath, 'w', encoding='utf-8-sig', newline='') as f:
         writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
-        writer.writerow(['Video', 'ID', 'Category', 'Question', 'Result', 'Frame'])
+        writer.writerow(['Video', 'ID', 'Category', 'Question', 'Result', 'Frame', 'SavedBy'])
 
         for q_id in sorted(evaluations.keys()):
             eval_data = evaluations[q_id]
@@ -787,7 +800,8 @@ def save_evaluation():
                 CATEGORIES.get(q_id, ''),
                 QUESTION_LABELS.get(q_id, ""),
                 result if result else 'N/A',
-                frame_str
+                frame_str,
+                saved_by
             ])
 
     # S3 업로드 (선택사항)
@@ -797,7 +811,6 @@ def save_evaluation():
         upload_to_s3(filepath, s3_key)
 
     # SQLite DB에 로그 기록
-    user_info = data.get('user')
     if user_info and user_info.get('id'):
         database.log_evaluation(user_info['id'], video_name, mask_source, filename)
         # DB 저장 후 즉시 S3 백업 (기기/세션 간 공유 및 안전한 보관)
@@ -1961,6 +1974,80 @@ def admin_sync_db():
         return jsonify({'success': True, 'message': 'DB synced from S3'})
     else:
         return jsonify({'success': False, 'message': 'Failed to sync DB from S3. Check S3 configuration.'}), 500
+
+
+@app.route('/api/admin/progress', methods=['GET'])
+def admin_progress():
+    """S3에서 평가 진행 현황 조회 (count.py와 동일한 로직)"""
+    if not check_admin_access():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    mask_source = request.args.get('mask_source', 'rexomni')
+    allowed_sources = ['rexomni', 'sam2', 'cutie']
+    if mask_source not in allowed_sources:
+        mask_source = 'rexomni'
+
+    if not USE_S3 or not s3_client:
+        return jsonify({'error': 'S3 is not enabled'}), 400
+
+    paginator = s3_client.get_paginator('list_objects_v2')
+
+    # 1. source 폴더에서 비디오 목록 가져오기
+    total_by_task = defaultdict(int)
+    source_prefix = f"{S3_PREFIX}/source/"
+
+    for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=source_prefix):
+        for obj in page.get('Contents', []):
+            key = obj['Key']
+            filename = key.replace(source_prefix, '')
+            if filename.endswith('.mp4') and '/' not in filename:
+                name = filename[:-4]
+                parts = name.rsplit('_', 1)
+                if len(parts) == 2 and parts[1].isdigit():
+                    total_by_task[parts[0]] += 1
+
+    # 2. evaluations/{mask_source}/ 폴더에서 평가 파일 카운트
+    done_by_task = defaultdict(int)
+    eval_prefix = f"{S3_PREFIX}/evaluations/{mask_source}/"
+
+    for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=eval_prefix):
+        for obj in page.get('Contents', []):
+            key = obj['Key']
+            rel_path = key.replace(eval_prefix, '')
+            parts = rel_path.split('/')
+            if len(parts) == 2 and parts[1].endswith('.csv'):
+                task = parts[0]
+                done_by_task[task] += 1
+
+    # 3. 결과 생성 (JSON 형식)
+    all_tasks = sorted(set(total_by_task) | set(done_by_task))
+    total_done = total_all = 0
+    tasks = []
+
+    for task in all_tasks:
+        done = done_by_task[task]
+        total = total_by_task[task]
+        if total == 0:
+            continue
+        pct = done / total * 100
+        tasks.append({
+            'task': task,
+            'done': done,
+            'total': total,
+            'percentage': round(pct, 1)
+        })
+        total_done += done
+        total_all += total
+
+    return jsonify({
+        'mask_source': mask_source,
+        'tasks': tasks,
+        'summary': {
+            'done': total_done,
+            'total': total_all,
+            'percentage': round(total_done / total_all * 100, 1) if total_all > 0 else 0
+        }
+    })
 
 
 if __name__ == '__main__':
