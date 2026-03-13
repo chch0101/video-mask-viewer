@@ -9,7 +9,7 @@
   --bg-secondary: #f5f5f7;
   --bg-tertiary: #fbfbfd;
 
-  --text-primary: #1d1d1f;
+  --text-primary: #0071e3;
   --text-secondary: #86868b;
   --text-tertiary: #6e6e73;
 
@@ -475,7 +475,9 @@ select:focus {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .debug-info {
