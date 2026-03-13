@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ControlPanel from './components/ControlPanel'
 import VideoPlayer from './components/VideoPlayer'
 import EvaluationPanel from './components/EvaluationPanel'
