@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from utils.video_utils import get_video_pairs
 
 # M1 Pro 최적화 기본값
-DEFAULT_WORKERS = 8   # M1 Pro 성능 코어 수
+DEFAULT_WORKERS = 4  # M1 Pro 성능 코어 수
 DEFAULT_BATCH = 32    # 배치 크기
 DEFAULT_QUEUE = 4     # 파이프라인 큐 크기 (배치 수)
 DEFAULT_PARALLEL = 2  # 동시 처리 영상 수
@@ -25,7 +25,7 @@ DEFAULT_PARALLEL = 2  # 동시 처리 영상 수
 # 기본 경로 설정
 BASE_DIR = Path(__file__).parent
 SOURCE_DIR = BASE_DIR / "video" / "source"
-MASK_DIR = BASE_DIR / "video" / "masks" / "rexomni"
+MASK_DIR = BASE_DIR / "video" / "masks" / "yolo11"
 OUTPUT_DIR = BASE_DIR / "video" / "mosaic"
 
 
@@ -368,7 +368,7 @@ def process_all_videos(task: str = None, block_size: int = 15,
     print(f"\n전체 완료! 총 소요 시간: {total_elapsed:.1f}초")
 
 
-def process_batch(mask_source: str = "rexomni", block_size: int = 15,
+def process_batch(mask_source: str = "yolo11", block_size: int = 15,
                   num_workers: int = DEFAULT_WORKERS, batch_size: int = DEFAULT_BATCH,
                   use_contour: bool = True):
     """
@@ -467,8 +467,8 @@ if __name__ == "__main__":
     parser.add_argument("--fast", action="store_true", help="빠른 모드 (컨투어 처리 생략)")
     parser.add_argument("--parallel", "-p", type=int, default=1,
                         help="동시 처리 영상 수 (기본값: 1, 2-3 권장)")
-    parser.add_argument("--mask-source", type=str, default="rexomni",
-                        help="masks 폴더 내 소스 이름 (기본값: rexomni)")
+    parser.add_argument("--mask-source", type=str, default="yolo11",
+                        help="masks 폴더 내 소스 이름 (기본값: yolo11)")
     parser.add_argument("--source-url", type=str, default=None,
                         help="S3 Presigned URL for source video")
     parser.add_argument("--mask-url", type=str, default=None,

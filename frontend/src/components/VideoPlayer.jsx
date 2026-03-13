@@ -183,7 +183,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
     if (selectedMaskSource) {
       const sourceVideo = sourceVideoRef.current
       const maskVideo = maskVideoRef.current
-      
+
       if (isPlaying) {
         setIsPlaying(false)
         sourceVideo?.pause()
@@ -241,8 +241,8 @@ const VideoPlayer = forwardRef(function VideoPlayer({
       const seekTime = frames / fps
       // 모자이크/일반 모드에 따라 활성 비디오 결정
       const activeVideo = viewingMosaic
-          ? mosaicVideoRef.current
-          : sourceVideoRef.current
+        ? mosaicVideoRef.current
+        : sourceVideoRef.current
       const maskVideo = maskVideoRef.current
       if (activeVideo) {
         const newTime = Math.max(0, Math.min(activeVideo.duration, activeVideo.currentTime + seekTime))
@@ -267,8 +267,8 @@ const VideoPlayer = forwardRef(function VideoPlayer({
     seekToTime: (targetTime) => {
       // 모자이크/일반 모드에 따라 활성 비디오 결정
       const activeVideo = viewingMosaic
-          ? mosaicVideoRef.current
-          : sourceVideoRef.current
+        ? mosaicVideoRef.current
+        : sourceVideoRef.current
       const maskVideo = maskVideoRef.current
       if (activeVideo) {
         // 재생 중이면 일시 정지하여 정확한 seek 보장 (일반 모드일 때만)
@@ -294,13 +294,13 @@ const VideoPlayer = forwardRef(function VideoPlayer({
     },
     getCurrentFrame: () => {
       const activeVideo = viewingMosaic
-          ? mosaicVideoRef.current
-          : sourceVideoRef.current
+        ? mosaicVideoRef.current
+        : sourceVideoRef.current
       if (!activeVideo) return 0
-      
+
       const fps = fpsRef.current
       const totalFrames = totalFramesRef.current
-      
+
       // 버림(floor) 대신 반올림(round) 또는 정확한 인덱스 계산
       // 마지막 프레임 버그 해결을 위해 totalFrames - 1 로 캡핑
       let frame = Math.floor(activeVideo.currentTime * fps)
@@ -388,15 +388,15 @@ const VideoPlayer = forwardRef(function VideoPlayer({
           // 백엔드에서 전달받은 메타데이터 저장
           if (data.fps) fpsRef.current = data.fps
           if (data.totalFrames) totalFramesRef.current = data.totalFrames
-          
+
           if (data.sourceFps) fpsRef.current = data.sourceFps
           if (data.maskFps) maskFpsRef.current = data.maskFps
           updateDebugInfo()
 
           if (onMetadataLoaded) {
             // (CSV 맵핑용으로 원본 fps 및 정확한 totalFrames 전달)
-            onMetadataLoaded({ 
-              fps: data.fps, 
+            onMetadataLoaded({
+              fps: data.fps,
               is_s3: data.is_s3,
               frameCount: data.totalFrames,
               totalFrames: data.totalFrames
@@ -446,7 +446,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
         if (onMetadataLoaded) {
           const duration = sourceVideo.duration
           const fps = fpsRef.current
-          
+
           // 이미 API에서 가져온 totalFrames가 있으면 유지, 없으면 계산
           if (!totalFramesRef.current) {
             totalFramesRef.current = Math.floor(duration * fps)
@@ -625,7 +625,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
       if (activeVideo && !activeVideo.paused) {
         const now = performance.now()
 
-          if (!viewingMosaic) {
+        if (!viewingMosaic) {
           // 실시간 FPS 측정: currentTime 변화 감지 (source+mask 모드)
           if (source && source.currentTime !== lastSourceTime) {
             sourceFrameCount++
@@ -867,7 +867,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
       <div className="video-header">
         <h1>{currentVideo?.source || 'No video selected'}</h1>
         <span className={`badge ${viewingMosaic ? 'badge-mosaic' : ''}`}>
-          {viewingMosaic ? '🎬 Mosaic' : 'Source + Mask'}
+          {viewingMosaic ? 'Mosaic' : 'Source + Mask'}
         </span>
       </div>
 
@@ -919,7 +919,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
                 if (fps > 0) {
                   fpsRef.current = fps
                 }
-                
+
                 // 백엔드에서 준 공식 totalFrames 가 있으면 우선 사용
                 if (meta.totalFrames) {
                   totalFramesRef.current = meta.totalFrames
@@ -970,49 +970,49 @@ const VideoPlayer = forwardRef(function VideoPlayer({
         <canvas ref={canvasRef} className="composite-canvas" />
         {videoPreparing && (
           <div className="source-converting">
-            ⏳ 비디오 준비 중... (변환이 필요하면 시간이 걸릴 수 있습니다)
+            비디오 준비 중...
           </div>
         )}
         {sourceConverting && !videoPreparing && (
           <div className="source-converting">
-            ⏳ 소스 비디오 변환 중... {retryCount > 0 && `(${retryCount}/30)`}
+            소스 비디오 변환 중... {retryCount > 0 && `(${retryCount}/30)`}
             {retryCount > 10 && (
               <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.8 }}>
-                다른 비디오 변환 대기 중일 수 있습니다
+                다른 비디오 변환 대기 중...
               </div>
             )}
           </div>
         )}
         {maskConverting && (
           <div className="mask-converting">
-            ⏳ 마스크 비디오 변환 중...
+            마스크 비디오 변환 중...
           </div>
         )}
         {/* 현재 마스크 소스에 마스크가 없을 때 경고 */}
         {currentVideo && selectedMaskSource &&
-         currentVideo.availableMasks?.length > 0 &&
-         !currentVideo.availableMasks.includes(selectedMaskSource) && (
-          <div style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            background: 'rgba(255, 152, 0, 0.95)',
-            color: '#fff',
-            padding: '16px 24px',
-            borderRadius: '8px',
-            fontSize: '14px',
-            fontWeight: '500',
-            textAlign: 'center',
-            zIndex: 20,
-            maxWidth: '80%'
-          }}>
-            ⚠️ '{selectedMaskSource}' 소스에 마스크가 없습니다<br />
-            <span style={{ fontSize: '12px', opacity: 0.9 }}>
-              사용 가능: {currentVideo.availableMasks.join(', ')}
-            </span>
-          </div>
-        )}
+          currentVideo.availableMasks?.length > 0 &&
+          !currentVideo.availableMasks.includes(selectedMaskSource) && (
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: 'rgba(255, 152, 0, 0.95)',
+              color: '#fff',
+              padding: '16px 24px',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '500',
+              textAlign: 'center',
+              zIndex: 20,
+              maxWidth: '80%'
+            }}>
+              '{selectedMaskSource}' 소스에 마스크가 없습니다<br />
+              <span style={{ fontSize: '12px', opacity: 0.9 }}>
+                사용 가능: {currentVideo.availableMasks.join(', ')}
+              </span>
+            </div>
+          )}
         <div className="debug-info">
           {debugInfo}
           {isPlaying && liveFps.source > 0 && (
