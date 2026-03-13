@@ -1054,21 +1054,33 @@ const VideoPlayer = forwardRef(function VideoPlayer({
       {evaluationHistory.length > 0 && (
         <div className="evaluation-history">
           <h4>평가 기록</h4>
-          <ul>
-            {evaluationHistory.map((item, index) => (
-              <li
-                key={index}
-                className={selectedEvaluation === item.filename ? 'selected' : ''}
-                onClick={() => handleEvaluationClick(item.filename)}
-              >
-                <span className="history-filename">{item.filename}</span>
-                <span className="history-date">
-                  {new Date(item.created).toLocaleString('ko-KR')}
-                  {item.saved_by && <span className="history-saved-by"> · {item.saved_by}</span>}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {(() => {
+            const groups = evaluationHistory.reduce((acc, item) => {
+              const key = item.saved_by || '(알 수 없음)'
+              if (!acc[key]) acc[key] = []
+              acc[key].push(item)
+              return acc
+            }, {})
+            return Object.entries(groups).map(([email, items]) => (
+              <div key={email} className="evaluation-history-group">
+                <div className="evaluation-history-group-header">{email}</div>
+                <ul>
+                  {items.map((item, index) => (
+                    <li
+                      key={index}
+                      className={selectedEvaluation === item.filename ? 'selected' : ''}
+                      onClick={() => handleEvaluationClick(item.filename)}
+                    >
+                      <span className="history-filename">{item.filename}</span>
+                      <span className="history-date">
+                        {new Date(item.created).toLocaleString('ko-KR')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          })()}
 
           {evaluationDetails && (
             <div className="evaluation-details">

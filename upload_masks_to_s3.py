@@ -21,7 +21,7 @@ s3_client = boto3.client(
     config=Config(signature_version='s3v4')
 )
 
-def upload_masks(local_dir, mask_source="rexomni"):
+def upload_masks(local_dir, mask_source="yolo11"):
     if not os.path.isdir(local_dir):
         print(f"Directory not found: {local_dir}")
         return
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Upload mask videos to S3")
     parser.add_argument("directory", help="Local directory containing the .mp4 mask files")
-    parser.add_argument("--source", default="rexomni", help="Mask source name (e.g., rexomni), forms the S3 path")
+    parser.add_argument("--source", default="yolo11", help="Mask source name (e.g., yolo11), forms the S3 path")
     
     args = parser.parse_args()
     upload_masks(args.directory, args.source)

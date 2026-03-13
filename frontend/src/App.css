@@ -903,6 +903,20 @@ select:focus {
   margin-bottom: 10px;
 }
 
+.evaluation-history-group {
+  margin-bottom: 10px;
+}
+
+.evaluation-history-group-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  margin-bottom: 2px;
+}
+
 .evaluation-history ul {
   list-style: none;
   max-height: 150px;
