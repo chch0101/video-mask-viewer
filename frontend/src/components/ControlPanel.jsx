@@ -1,4 +1,4 @@
-import { memo, useState, useMemo } from 'react'
+import { memo, useState, useMemo, useEffect } from 'react'
 import MaskControls from './MaskControls'
 
 const ControlPanel = memo(function ControlPanel({
