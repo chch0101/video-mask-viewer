@@ -120,9 +120,8 @@ function AppContent() {
   const fetchEvaluationHistory = useCallback(async (videoName, maskSource) => {
     if (!videoName || !user) return
     try {
-      const url = maskSource
-        ? `/api/evaluations?mask_source=${maskSource}`
-        : '/api/evaluations'
+      let url = `/api/evaluations?video_name=${encodeURIComponent(videoName)}`
+      if (maskSource) url += `&mask_source=${maskSource}`
       const response = await fetch(url)
       const data = await response.json()
       const filtered = (data.evaluations || []).filter(e =>

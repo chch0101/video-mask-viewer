@@ -1064,6 +1064,7 @@ const VideoPlayer = forwardRef(function VideoPlayer({
                 <span className="history-filename">{item.filename}</span>
                 <span className="history-date">
                   {new Date(item.created).toLocaleString('ko-KR')}
+                  {item.saved_by && <span className="history-saved-by"> · {item.saved_by}</span>}
                 </span>
               </li>
             ))}

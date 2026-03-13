@@ -66,12 +66,15 @@ if USE_S3:
         USE_S3 = False
 
 
-def upload_to_s3(local_path, s3_key):
+def upload_to_s3(local_path, s3_key, metadata=None):
     """파일을 S3에 업로드"""
     if not s3_client or not S3_BUCKET:
         return False
     try:
-        s3_client.upload_file(local_path, S3_BUCKET, s3_key)
+        extra_args = {}
+        if metadata:
+            extra_args['Metadata'] = {k: str(v) for k, v in metadata.items()}
+        s3_client.upload_file(local_path, S3_BUCKET, s3_key, ExtraArgs=extra_args if extra_args else None)
         print(f"[S3] Uploaded: {local_path} -> s3://{S3_BUCKET}/{s3_key}")
         return True
     except Exception as e:
@@ -808,7 +811,7 @@ def save_evaluation():
     if USE_S3:
         s3_filename = f"evaluations/{mask_source}/{task_name}/{filename}" if mask_source else f"evaluations/{task_name}/{filename}"
         s3_key = f"{S3_PREFIX}/{s3_filename}"
-        upload_to_s3(filepath, s3_key)
+        upload_to_s3(filepath, s3_key, metadata={'saved-by': saved_by} if saved_by else None)
 
     # SQLite DB에 로그 기록
     if user_info and user_info.get('id'):
@@ -865,6 +868,46 @@ def list_evaluations():
     mask_source = request.args.get('mask_source', '')
     files = []
 
+    # S3가 활성화되어 있으면 S3에서 목록 조회 (다른 사용자가 저장한 CSV 포함)
+    if USE_S3 and s3_client:
+        video_name = request.args.get('video_name', '')
+        base_prefix = f"{S3_PREFIX}/evaluations/"
+        list_prefix = f"{base_prefix}{mask_source}/" if mask_source else base_prefix
+        try:
+            paginator = s3_client.get_paginator('list_objects_v2')
+            raw_files = []
+            for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=list_prefix):
+                for obj in page.get('Contents', []):
+                    key = obj['Key']
+                    rel = key.replace(base_prefix, '', 1)
+                    if rel.endswith('.csv'):
+                        raw_files.append({
+                            'filename': rel,
+                            'created': obj['LastModified'].isoformat(),
+                            's3_key': key,
+                            'saved_by': ''
+                        })
+
+            # video_name이 지정된 경우 해당 파일들의 메타데이터만 조회 (저장자 정보)
+            if video_name:
+                matched = [f for f in raw_files if video_name in f['filename']]
+                for item in matched:
+                    try:
+                        head = s3_client.head_object(Bucket=S3_BUCKET, Key=item['s3_key'])
+                        item['saved_by'] = head.get('Metadata', {}).get('saved-by', '')
+                    except Exception:
+                        pass
+                files = matched
+            else:
+                files = raw_files
+
+            for f in files:
+                f.pop('s3_key', None)
+            files.sort(key=lambda x: x['created'], reverse=True)
+        except Exception as e:
+            print(f"[S3] Failed to list evaluations: {e}")
+        return jsonify({'evaluations': files})
+
     if os.path.exists(EVALUATIONS_DIR):
         # mask_source가 지정되면 해당 폴더만 검색
         if mask_source:
@@ -908,7 +951,13 @@ def get_evaluation(filename):
     filepath = os.path.join(EVALUATIONS_DIR, filename)
 
     if not os.path.exists(filepath):
-        return jsonify({'error': 'File not found'}), 404
+        # 로컬에 없으면 S3에서 다운로드 시도
+        if USE_S3 and s3_client:
+            s3_key = f"{S3_PREFIX}/evaluations/{filename}"
+            if not download_from_s3(s3_key, filepath):
+                return jsonify({'error': 'File not found'}), 404
+        else:
+            return jsonify({'error': 'File not found'}), 404
 
     results = []
     with open(filepath, 'r', encoding='utf-8-sig') as f:
