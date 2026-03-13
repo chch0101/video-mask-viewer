@@ -1,9 +1,12 @@
 import { memo, useState, useMemo } from 'react'
 import MaskControls from './MaskControls'
 
+const ADMIN_EMAILS = ['choihaechan7@gmail.com']
+
 const ControlPanel = memo(function ControlPanel({
   user,
   onLogout,
+  onOpenAdmin,
   videos,
   currentVideo,
   currentFrame,
@@ -21,6 +24,7 @@ const ControlPanel = memo(function ControlPanel({
   onSeekFrames,
   onToggleMosaic
 }) {
+  const isAdmin = user && ADMIN_EMAILS.includes(user.email)
   const [selectedTask, setSelectedTask] = useState('all')
 
   // task 목록 추출 (비디오 이름에서 task 추출: face_0001 → face)
@@ -81,15 +85,28 @@ const ControlPanel = memo(function ControlPanel({
             }}>{user.name}</span>
             <span style={{ color: '#666', fontSize: '12px' }}>Saved: {user.saved_count || 0}</span>
           </div>
-          <button 
-            onClick={onLogout} 
-            style={{ 
-              padding: '6px 10px', cursor: 'pointer', borderRadius: '4px', 
-              border: '1px solid #ccc', background: 'white', fontSize: '12px' 
-            }}
-          >
-            Logout
-          </button>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {isAdmin && (
+              <button
+                onClick={onOpenAdmin}
+                style={{
+                  padding: '6px 10px', cursor: 'pointer', borderRadius: '4px',
+                  border: '1px solid #1976d2', background: '#1976d2', color: 'white', fontSize: '12px'
+                }}
+              >
+                Admin
+              </button>
+            )}
+            <button
+              onClick={onLogout}
+              style={{
+                padding: '6px 10px', cursor: 'pointer', borderRadius: '4px',
+                border: '1px solid #ccc', background: 'white', fontSize: '12px'
+              }}
+            >
+              Logout
+            </button>
+          </div>
         </div>
       )}
 

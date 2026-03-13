@@ -1877,6 +1877,70 @@ def kakao_count():
         })
 
 
+# ─────────────────────────── Admin API ───────────────────────────
+
+ADMIN_EMAILS = ["choihaechan7@gmail.com"]
+
+
+def check_admin_access():
+    """관리자 권한 확인"""
+    auth_header = request.headers.get('X-User-Email')
+    if not auth_header or auth_header not in ADMIN_EMAILS:
+        return False
+    return True
+
+
+@app.route('/api/admin/check', methods=['GET'])
+def admin_check():
+    """관리자 권한 확인 API"""
+    email = request.headers.get('X-User-Email')
+    is_admin = email in ADMIN_EMAILS if email else False
+    return jsonify({'is_admin': is_admin, 'email': email})
+
+
+@app.route('/api/admin/stats', methods=['GET'])
+def admin_stats():
+    """대시보드 통계 조회"""
+    if not check_admin_access():
+        return jsonify({'error': 'Unauthorized'}), 403
+    stats = database.get_stats()
+    return jsonify(stats)
+
+
+@app.route('/api/admin/users', methods=['GET'])
+def admin_users():
+    """모든 사용자 목록 조회"""
+    if not check_admin_access():
+        return jsonify({'error': 'Unauthorized'}), 403
+    users = database.get_all_users()
+    return jsonify({'users': users})
+
+
+@app.route('/api/admin/evaluations', methods=['GET'])
+def admin_evaluations():
+    """모든 평가 데이터 조회"""
+    if not check_admin_access():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    user_id = request.args.get('user_id')
+    search = request.args.get('q')
+    evaluations = database.get_all_evaluations(user_id=user_id, search=search)
+    return jsonify({'evaluations': evaluations})
+
+
+@app.route('/api/admin/sync-db', methods=['POST'])
+def admin_sync_db():
+    """S3에서 DB 동기화"""
+    if not check_admin_access():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    success = download_db_from_s3()
+    if success:
+        return jsonify({'success': True, 'message': 'DB synced from S3'})
+    else:
+        return jsonify({'success': False, 'message': 'Failed to sync DB from S3'}), 500
+
+
 if __name__ == '__main__':
     print(f"Video directory: {VIDEO_DIR}")
     print(f"Evaluations directory: {EVALUATIONS_DIR}")

@@ -80,6 +80,64 @@ def get_user_evaluation_count(user_id):
     conn.close()
     return count
 
+
+# ─────────────────────────── Admin Functions ───────────────────────────
+
+def get_all_users():
+    """모든 사용자 목록 조회"""
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute('SELECT * FROM Users ORDER BY created_at DESC')
+    rows = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return rows
+
+
+def get_all_evaluations(user_id=None, search=None):
+    """모든 평가 데이터 조회 (필터링 지원)"""
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    query = '''
+        SELECT e.*, u.name as user_name, u.email
+        FROM Evaluations e
+        JOIN Users u ON e.user_id = u.id
+    '''
+    params = []
+    conditions = []
+
+    if user_id:
+        conditions.append('e.user_id = ?')
+        params.append(user_id)
+    if search:
+        conditions.append('(e.video_name LIKE ? OR e.filename LIKE ? OR e.mask_source LIKE ?)')
+        params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
+
+    if conditions:
+        query += ' WHERE ' + ' AND '.join(conditions)
+
+    query += ' ORDER BY e.created_at DESC'
+
+    c.execute(query, params)
+    rows = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return rows
+
+
+def get_stats():
+    """대시보드용 통계"""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute('SELECT COUNT(*) FROM Users')
+    user_count = c.fetchone()[0]
+    c.execute('SELECT COUNT(*) FROM Evaluations')
+    eval_count = c.fetchone()[0]
+    conn.close()
+    return {'user_count': user_count, 'eval_count': eval_count}
+
+
 if __name__ == "__main__":
     init_db()
     print("Database Initialized")

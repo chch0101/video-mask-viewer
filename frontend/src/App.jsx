@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import ControlPanel from './components/ControlPanel'
 import VideoPlayer from './components/VideoPlayer'
 import EvaluationPanel from './components/EvaluationPanel'
+import AdminPanel from './components/AdminPanel'
 import { MaskProvider, useMask } from './contexts/MaskContext'
 import { GoogleLogin, googleLogout } from '@react-oauth/google'
 
@@ -33,6 +34,7 @@ function AppContent() {
   const [videoUrls, setVideoUrls] = useState({})
   const [mobileActiveTab, setMobileActiveTab] = useState('video') // 모바일 탭 상태
   const [isMobile, setIsMobile] = useState(false) // 모바일 감지
+  const [showAdminPanel, setShowAdminPanel] = useState(false) // 관리자 패널
   const [user, setUser] = useState(() => {
     try {
       const saved = localStorage.getItem('vmask_user')
@@ -547,6 +549,7 @@ function AppContent() {
             <ControlPanel
               user={user}
               onLogout={handleLogout}
+              onOpenAdmin={() => setShowAdminPanel(true)}
               videos={videos}
               currentVideo={currentVideo}
               currentFrame={currentFrame}
@@ -624,6 +627,13 @@ function AppContent() {
             </nav>
           )}
         </div>
+      )}
+
+      {showAdminPanel && (
+        <AdminPanel
+          user={user}
+          onClose={() => setShowAdminPanel(false)}
+        />
       )}
     </div>
   )
