@@ -561,18 +561,18 @@ select:focus {
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--btn-primary);
   transition: all 0.2s;
 }
 
 .speed-btn:hover {
-  border-color: var(--text-secondary);
+  border-color: var(--btn-primary);
 }
 
 .speed-btn.active {
-  background: var(--text-primary);
+  background: var(--btn-primary);
   color: white;
-  border-color: var(--text-primary);
+  border-color: var(--btn-primary);
 }
 
 /* ─────────────────── Evaluation Panel ─────────────────── */
