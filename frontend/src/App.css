@@ -9,9 +9,11 @@
   --bg-secondary: #f5f5f7;
   --bg-tertiary: #fbfbfd;
 
-  --text-primary: #0071e3;
+  --text-primary: #1d1d1f;
   --text-secondary: #86868b;
   --text-tertiary: #6e6e73;
+
+  --btn-primary: #0071e3;
 
   --accent: #0071e3;
   --accent-hover: #0077ed;
@@ -216,13 +218,13 @@ select:focus {
 
 .task-filter-btn:hover {
   border-color: var(--text-secondary);
-  color: var(--text-primary);
+  color: var(--btn-primary);
 }
 
 .task-filter-btn.active {
-  background: var(--text-primary);
+  background: var(--btn-primary);
   color: var(--bg-primary);
-  border-color: var(--text-primary);
+  border-color: var(--btn-primary);
 }
 
 /* Nav Buttons */
@@ -240,7 +242,7 @@ select:focus {
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--btn-primary);
   transition: all 0.2s ease;
 }
 
@@ -277,7 +279,7 @@ select:focus {
   border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 14px;
-  color: var(--text-primary);
+  color: var(--btn-primary);
   font-weight: 500;
   transition: all 0.2s ease;
 }
@@ -505,7 +507,7 @@ select:focus {
   width: 44px;
   height: 44px;
   border: none;
-  background: var(--text-primary);
+  background: var(--btn-primary);
   color: white;
   border-radius: 50%;
   cursor: pointer;
