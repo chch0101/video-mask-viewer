@@ -86,25 +86,19 @@ export default function AdminPanel({ user, onClose }) {
     <div className="admin-overlay">
       <div className="admin-panel">
         <div className="admin-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '40px', height: '40px', borderRadius: '10px',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'white', fontSize: '18px'
-            }}>
-              ⚙
-            </div>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '18px' }}>관리자 패널</h2>
-              <span style={{ fontSize: '12px', color: '#888' }}>{user?.email}</span>
-            </div>
+          <div className="admin-title">
+            <h2>Admin</h2>
+            <span className="admin-email">{user?.email}</span>
           </div>
           <div className="admin-header-actions">
             <button className="sync-btn" onClick={handleSyncDB} disabled={syncing}>
-              {syncing ? '⏳ 동기화 중...' : '☁️ S3 동기화'}
+              {syncing ? 'Syncing...' : 'Sync from S3'}
             </button>
-            <button className="close-btn" onClick={onClose}>✕</button>
+            <button className="close-btn" onClick={onClose}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -113,92 +107,91 @@ export default function AdminPanel({ user, onClose }) {
             className={activeTab === 'dashboard' ? 'active' : ''}
             onClick={() => setActiveTab('dashboard')}
           >
-            📊 대시보드
+            Dashboard
           </button>
           <button
             className={activeTab === 'users' ? 'active' : ''}
             onClick={() => setActiveTab('users')}
           >
-            👥 사용자
+            Users
           </button>
           <button
             className={activeTab === 'evaluations' ? 'active' : ''}
             onClick={() => setActiveTab('evaluations')}
           >
-            📋 평가 데이터
+            Evaluations
           </button>
         </div>
 
         <div className="admin-content">
           {activeTab === 'dashboard' && (
             <div className="dashboard">
-              <div className="stat-card" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                <div className="stat-icon">👥</div>
-                <div className="stat-info">
+              <div className="stats-grid">
+                <div className="stat-card">
                   <div className="stat-value">{stats.user_count}</div>
-                  <div className="stat-label">총 사용자</div>
+                  <div className="stat-label">Total Users</div>
                 </div>
-              </div>
-              <div className="stat-card" style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
-                <div className="stat-icon">📝</div>
-                <div className="stat-info">
+                <div className="stat-card">
                   <div className="stat-value">{stats.eval_count}</div>
-                  <div className="stat-label">총 평가 수</div>
+                  <div className="stat-label">Total Evaluations</div>
                 </div>
-              </div>
-              <div className="stat-card" style={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' }}>
-                <div className="stat-icon">📈</div>
-                <div className="stat-info">
+                <div className="stat-card">
                   <div className="stat-value">
-                    {stats.user_count > 0 ? (stats.eval_count / stats.user_count).toFixed(1) : 0}
+                    {stats.user_count > 0 ? (stats.eval_count / stats.user_count).toFixed(1) : '0'}
                   </div>
-                  <div className="stat-label">인당 평균</div>
+                  <div className="stat-label">Avg per User</div>
                 </div>
               </div>
 
-              <div className="recent-users">
-                <h3>최근 가입 사용자</h3>
-                {users.slice(0, 5).map((u) => (
-                  <div key={u.id} className="recent-user-item">
-                    {u.picture ? (
-                      <img src={u.picture} alt="" className="user-avatar" />
-                    ) : (
-                      <div className="user-avatar-placeholder">👤</div>
-                    )}
-                    <div className="recent-user-info">
-                      <span className="recent-user-name">{u.name}</span>
-                      <span className="recent-user-email">{u.email}</span>
+              <div className="recent-section">
+                <h3>Recent Users</h3>
+                <div className="recent-list">
+                  {users.slice(0, 5).map((u) => (
+                    <div key={u.id} className="recent-item">
+                      <div className="recent-item-avatar">
+                        {u.picture ? (
+                          <img src={u.picture} alt="" />
+                        ) : (
+                          <div className="avatar-placeholder">{u.name?.charAt(0) || '?'}</div>
+                        )}
+                      </div>
+                      <div className="recent-item-info">
+                        <span className="recent-item-name">{u.name}</span>
+                        <span className="recent-item-sub">{u.email}</span>
+                      </div>
+                      <span className="recent-item-date">
+                        {new Date(u.created_at).toLocaleDateString('ko-KR')}
+                      </span>
                     </div>
-                    <span className="recent-user-date">
-                      {new Date(u.created_at).toLocaleDateString('ko-KR')}
-                    </span>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           )}
 
           {activeTab === 'users' && (
-            <div className="users-table-container">
+            <div className="table-container">
               {loading ? (
-                <div className="loading">로딩 중...</div>
+                <div className="loading">Loading...</div>
               ) : (
                 <table className="admin-table">
                   <thead>
                     <tr>
-                      <th>이름</th>
-                      <th>이메일</th>
-                      <th>가입일</th>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Joined</th>
                     </tr>
                   </thead>
                   <tbody>
                     {users.map((u) => (
                       <tr key={u.id}>
-                        <td>
-                          {u.picture && (
-                            <img src={u.picture} alt="" className="user-avatar" />
+                        <td className="user-cell">
+                          {u.picture ? (
+                            <img src={u.picture} alt="" className="table-avatar" />
+                          ) : (
+                            <div className="table-avatar-placeholder">{u.name?.charAt(0) || '?'}</div>
                           )}
-                          {u.name}
+                          <span>{u.name}</span>
                         </td>
                         <td>{u.email}</td>
                         <td>{new Date(u.created_at).toLocaleString('ko-KR')}</td>
@@ -215,7 +208,7 @@ export default function AdminPanel({ user, onClose }) {
               <form onSubmit={handleSearch} className="search-form">
                 <input
                   type="text"
-                  placeholder="검색 (비디오명, 파일명...)"
+                  placeholder="Search video, filename..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -223,25 +216,25 @@ export default function AdminPanel({ user, onClose }) {
                   value={selectedUser}
                   onChange={(e) => setSelectedUser(e.target.value)}
                 >
-                  <option value="">모든 사용자</option>
+                  <option value="">All users</option>
                   {users.map((u) => (
                     <option key={u.id} value={u.id}>{u.name}</option>
                   ))}
                 </select>
-                <button type="submit">검색</button>
+                <button type="submit">Search</button>
               </form>
               {loading ? (
-                <div className="loading">로딩 중...</div>
+                <div className="loading">Loading...</div>
               ) : (
                 <table className="admin-table">
                   <thead>
                     <tr>
                       <th>ID</th>
-                      <th>사용자</th>
-                      <th>비디오</th>
-                      <th>마스크 소스</th>
-                      <th>파일</th>
-                      <th>생성일</th>
+                      <th>User</th>
+                      <th>Video</th>
+                      <th>Mask Source</th>
+                      <th>File</th>
+                      <th>Created</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -250,8 +243,8 @@ export default function AdminPanel({ user, onClose }) {
                         <td>{e.id}</td>
                         <td>{e.user_name}</td>
                         <td>{e.video_name}</td>
-                        <td>{e.mask_source || '-'}</td>
-                        <td>{e.filename}</td>
+                        <td><span className="tag">{e.mask_source || '-'}</span></td>
+                        <td className="filename">{e.filename}</td>
                         <td>{new Date(e.created_at).toLocaleString('ko-KR')}</td>
                       </tr>
                     ))}
