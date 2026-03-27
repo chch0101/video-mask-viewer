@@ -62,7 +62,6 @@ const VideoPlayer = forwardRef(function VideoPlayer({
   // 비디오 로드 재시도 타이머
   const retryTimerRef = useRef(null)
   const retryCountRef = useRef(0)
-  const isDualViewRef = useRef(false)
 
   const getTaskName = (videoName) => {
     if (!videoName) return ''
@@ -99,31 +98,6 @@ const VideoPlayer = forwardRef(function VideoPlayer({
 
     const ctx = canvas.getContext('2d')
 
-    // 0. side-by-side 모드 (text, tattoo task + ogq maskSource)
-    const task = getTaskName(currentVideo?.name)
-    const isDualView = selectedMaskSource === 'ogq' && ['text', 'tattoo'].includes(task)
-    isDualViewRef.current = isDualView
-
-    if (isDualView) {
-      if (sourceVideo.readyState < 2 || !maskVideo || maskVideo.readyState < 2) return
-
-      // Canvas 크기를 가로 2배로 맞춤
-      if (canvas.width !== sourceVideo.videoWidth * 2 || canvas.height !== sourceVideo.videoHeight) {
-        canvas.width = sourceVideo.videoWidth * 2
-        canvas.height = sourceVideo.videoHeight
-      }
-
-      ctx.globalAlpha = 1
-      ctx.globalCompositeOperation = 'source-over'
-      
-      // 원본 (왼쪽)
-      ctx.drawImage(sourceVideo, 0, 0, sourceVideo.videoWidth, sourceVideo.videoHeight)
-      
-      // 마스크/모자이크 (오른쪽)
-      ctx.drawImage(maskVideo, sourceVideo.videoWidth, 0, sourceVideo.videoWidth, sourceVideo.videoHeight)
-      return
-    }
-
     // Canvas 크기를 비디오에 맞춤 (최초 또는 리사이즈 시)
     if (canvas.width !== sourceVideo.videoWidth || canvas.height !== sourceVideo.videoHeight) {
       canvas.width = sourceVideo.videoWidth
@@ -137,10 +111,11 @@ const VideoPlayer = forwardRef(function VideoPlayer({
 
     // 2. 마스크 비디오 합성 (visible이고 마스크가 준비된 경우)
     if (maskSettings.visible && maskVideo && maskVideo.readyState >= 2) {
-      // ogq 처럼 완성된 모자이크 영상인 경우, 원본 위에 100% 불투명하게 덮어써야 함
-      const isMosaicMask = videoUrls.mosaic || selectedMaskSource === 'ogq';
-      ctx.globalAlpha = isMosaicMask ? 1 : (maskSettings.opacity / 100)
-      ctx.globalCompositeOperation = isMosaicMask ? 'source-over' : (BLEND_MAP[maskSettings.blendMode] || 'source-over')
+      // ogq 처럼 완성된 모자이크 영상인 경우, 원본 위에 덮어씌움
+      // 사용자가 원본과 겹쳐서 보고 싶어 하므로, 투명도(opacity)를 적용할 수 있게 함
+      const isOgqSource = selectedMaskSource === 'ogq';
+      ctx.globalAlpha = (maskSettings.opacity / 100)
+      ctx.globalCompositeOperation = isOgqSource ? 'source-over' : (BLEND_MAP[maskSettings.blendMode] || 'source-over')
       ctx.drawImage(maskVideo, 0, 0, canvas.width, canvas.height)
       // 복원
       ctx.globalAlpha = 1
@@ -908,18 +883,18 @@ const VideoPlayer = forwardRef(function VideoPlayer({
   }
 
       const task = getTaskName(currentVideo?.name)
-      const isDualView = selectedMaskSource === 'ogq' && ['text', 'tattoo'].includes(task)
+      const isOverlayTask = ['text', 'tattoo'].includes(task) && selectedMaskSource === 'ogq'
 
       return (
         <div className="main-content">
           <div className="video-header">
             <h1>{currentVideo?.source || 'No video selected'}</h1>
             <span className={`badge ${viewingMosaic ? 'badge-mosaic' : ''}`}>
-              {isDualView ? 'Side-by-Side' : (viewingMosaic ? 'Mosaic' : 'Source + Mask')}
+              {isOverlayTask ? 'Source + Mask (Overlay)' : (viewingMosaic ? 'Mosaic' : 'Source + Mask')}
             </span>
           </div>
     
-          <div className={`video-container ${isDualView ? 'dual-view' : ''}`}>
+          <div className="video-container">
         {/* 히든 비디오 소스들 (Canvas 렌더링 소스로만 사용) */}
         <video
           ref={sourceVideoRef}

@@ -214,9 +214,11 @@ function AppContent() {
         fetchedUrls = await urlRes.json()
         setVideoUrls(fetchedUrls)
         const task = getTaskName(videoName)
-        const isDualViewTask = ['text', 'tattoo'].includes(task)
-        if (fetchedUrls.mosaic || (selectedMaskSource === 'ogq' && !isDualViewTask)) {
+        const isOverlayTask = ['text', 'tattoo'].includes(task)
+        if (!isOverlayTask && (fetchedUrls.mosaic || selectedMaskSource === 'ogq')) {
           setViewingMosaic(true)
+        } else {
+          setViewingMosaic(false)
         }
       } catch (err) {
         console.error('Failed to fetch video URLs:', err)
@@ -429,8 +431,8 @@ function AppContent() {
           .then(data => {
             setVideoUrls(data)
             const task = getTaskName(currentVideo.name)
-            const isDualViewTask = ['text', 'tattoo'].includes(task)
-            if (data.mosaic || (selectedMaskSource === 'ogq' && !isDualViewTask)) {
+            const isOverlayTask = ['text', 'tattoo'].includes(task)
+            if (!isOverlayTask && (data.mosaic || selectedMaskSource === 'ogq')) {
               setViewingMosaic(true)
             } else {
               setViewingMosaic(false)
