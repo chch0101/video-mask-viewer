@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+venv/
+backend/venv/
+__pycache__/
+*.pyc
+
+# Build outputs
+frontend/dist/
+backend/static/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env.local
+.env.*.local
+
+# Cache
+backend/cache/
+.cache/
+
+# Git
+.git/
+.gitignore
+
+# Video files (will be mounted or uploaded separately)
+video/
+evaluations/
